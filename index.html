@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Meu Estoque</title>
+    <!-- Tailwind CSS para o visual Mobile -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Biblioteca Leitor de Código de Barras -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans">
+
+    <div class="max-w-md mx-auto bg-white min-h-screen shadow-lg relative">
+        
+        <!-- TELA DE LOGIN -->
+        <div id="login-screen" class="p-6 pt-20 flex flex-col items-center">
+            <h1 class="text-3xl font-bold mb-6 text-blue-600">Livraria App</h1>
+            <input type="email" id="email" placeholder="E-mail" class="w-full mb-3 p-3 border rounded-lg">
+            <input type="password" id="senha" placeholder="Senha" class="w-full mb-6 p-3 border rounded-lg">
+            <button onclick="login()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-bold mb-2">Entrar</button>
+            <button onclick="cadastrar()" class="w-full bg-gray-200 text-gray-700 p-3 rounded-lg font-bold">Criar Conta</button>
+            <p id="auth-msg" class="text-red-500 mt-4 text-sm"></p>
+        </div>
+
+        <!-- TELA PRINCIPAL (APP) -->
+        <div id="app-screen" class="hidden pb-20">
+            <!-- Cabeçalho -->
+            <div class="bg-blue-600 text-white p-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Estoque</h2>
+                <button onclick="logout()" class="text-sm underline">Sair</button>
+            </div>
+
+            <div class="p-4">
+                <!-- Botão para Abrir Câmera -->
+                <button onclick="iniciarCamera()" class="w-full bg-green-500 text-white p-4 rounded-lg font-bold flex justify-center items-center gap-2 mb-4">
+                    📷 Escanear Livro
+                </button>
+                <div id="reader" class="w-full mb-4"></div> <!-- Câmera aparece aqui -->
+
+                <!-- Formulário de Livro -->
+                <div class="bg-gray-50 p-4 rounded-lg border mb-6">
+                    <h3 class="font-bold mb-2">Dados do Livro</h3>
+                    <input type="text" id="isbn" placeholder="ISBN" class="w-full mb-2 p-2 border rounded">
+                    <input type="text" id="titulo" placeholder="Título do Livro" class="w-full mb-2 p-2 border rounded">
+                    <div class="flex gap-2 mb-2">
+                        <input type="number" id="preco" placeholder="Preço (R$)" class="w-1/2 p-2 border rounded">
+                        <input type="number" id="qtd" placeholder="Qtd. Inicial" class="w-1/2 p-2 border rounded">
+                    </div>
+                    <button onclick="salvarLivro()" class="w-full bg-blue-600 text-white p-2 rounded font-bold">Salvar no Estoque</button>
+                </div>
+
+                <!-- Resumo de Vendas -->
+                <div class="bg-yellow-100 p-4 rounded-lg border">
+                    <h3 class="font-bold text-yellow-800">Vendas de Hoje</h3>
+                    <p class="text-2xl font-bold text-yellow-900" id="vendas-hoje">R$ 0,00</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- O Arquivo de Lógica -->
+    <script src="app.js"></script>
+</body>
+</html>
