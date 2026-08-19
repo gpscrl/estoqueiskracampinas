@@ -2,10 +2,6 @@
 const SUPABASE_URL = 'https://tvjadtkhjbbttszairxe.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amFkdGtoamJidHRzemFpcnhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwOTI3MDMsImV4cCI6MjEwMjY2ODcwM30.-5QfzCMPIzO7rV8CqTlnNkyWkoVGFnMwMYqDKDBzJXQ';
 
-// --- CONFIGURAÇÃO DO SUPABASE ---
-const SUPABASE_URL = 'https://SEU_PROJETO.supabase.co';
-const SUPABASE_KEY = 'SUA_CHAVE_ANON_AQUI';
-
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let usuarioAtual = null;
 let html5QrcodeScanner = null;
