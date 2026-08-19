@@ -3,21 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Iskra Campinas</title>
-    <!-- Tailwind CSS para o visual Mobile -->
+    <title>Iskra - Campinas</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Biblioteca Leitor de Código de Barras -->
     <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Biblioteca para gerar Excel (.xlsx) -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
 </head>
-<body class="bg-gray-100 text-gray-800 font-sans">
+<body class="bg-gray-100 text-gray-800 font-sans pb-20">
 
-    <div class="max-w-md mx-auto bg-white min-h-screen shadow-lg relative">
+    <div class="max-w-md mx-auto bg-white min-h-screen shadow-lg relative flex flex-col justify-between">
         
         <!-- TELA DE LOGIN -->
-        <div id="login-screen" class="p-6 pt-20 flex flex-col items-center">
-            <h1 class="text-3xl font-bold mb-6 text-blue-600">Iskra Campinas</h1>
+        <div id="login-screen" class="p-6 pt-20 flex flex-col items-center justify-center min-h-screen">
+            <h1 class="text-3xl font-bold mb-6 text-blue-600">Iskra - Campinas</h1>
             <input type="email" id="email" placeholder="E-mail" class="w-full mb-3 p-3 border rounded-lg">
             <input type="password" id="senha" placeholder="Senha" class="w-full mb-6 p-3 border rounded-lg">
             <button onclick="login()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-bold mb-2">Entrar</button>
@@ -25,51 +24,123 @@
             <p id="auth-msg" class="text-red-500 mt-4 text-sm"></p>
         </div>
 
-        <!-- TELA PRINCIPAL (APP) -->
-        <div id="app-screen" class="hidden pb-20">
-            <!-- Cabeçalho -->
-            <div class="bg-blue-600 text-white p-4 flex justify-between items-center">
-                <h2 class="text-xl font-bold">Estoque</h2>
+        <!-- APLICATIVO PRINCIPAL (COM ABAS) -->
+        <div id="app-screen" class="hidden flex flex-col h-full">
+            
+            <!-- TOPO -->
+            <div class="bg-blue-600 text-white p-4 flex justify-between items-center shadow">
+                <h2 id="titulo-aba" class="text-xl font-bold">Cadastro</h2>
                 <button onclick="logout()" class="text-sm underline">Sair</button>
             </div>
 
-            <div class="p-4">
-                <!-- Botão para Abrir Câmera -->
-                <button onclick="iniciarCamera()" class="w-full bg-green-500 text-white p-4 rounded-lg font-bold flex justify-center items-center gap-2 mb-4">
-                    📷 Escanear Livro
-                </button>
-                <div id="reader" class="w-full mb-4"></div> <!-- Câmera aparece aqui -->
+            <!-- CONTEÚDO DAS ABAS -->
+            <div class="p-4 flex-1 overflow-y-auto mb-16">
+                
+                <!-- ABA 1: CADASTRO -->
+                <div id="tab-cadastro" class="aba-conteudo">
+                    <h3 class="font-bold text-lg mb-3">Cadastrar Novo Livro</h3>
+                    <button onclick="iniciarCamera('cadastro')" class="w-full bg-green-500 text-white p-3 rounded-lg font-bold flex justify-center items-center gap-2 mb-4">
+                        📷 Escanear ISBN
+                    </button>
+                    <div id="reader-cadastro" class="w-full mb-4"></div>
 
-                <!-- Formulário de Livro -->
-                <div class="bg-gray-50 p-4 rounded-lg border mb-6">
-                    <h3 class="font-bold mb-2">Dados do Livro</h3>
-                    <input type="text" id="isbn" placeholder="ISBN" class="w-full mb-2 p-2 border rounded">
-                    <input type="text" id="titulo" placeholder="Título do Livro" class="w-full mb-2 p-2 border rounded">
-                    <div class="flex gap-2 mb-2">
-                        <input type="number" id="preco" placeholder="Preço (R$)" class="w-1/2 p-2 border rounded">
-                        <input type="number" id="qtd" placeholder="Qtd. Inicial" class="w-1/2 p-2 border rounded">
+                    <div class="space-y-3">
+                        <input type="text" id="cad-isbn" placeholder="ISBN" class="w-full p-3 border rounded-lg">
+                        <input type="text" id="cad-titulo" placeholder="Título do Livro" class="w-full p-3 border rounded-lg">
+                        <div class="flex gap-2">
+                            <input type="number" step="0.01" id="cad-preco" placeholder="Preço (R$)" class="w-1/2 p-3 border rounded-lg">
+                            <input type="number" id="cad-qtd" placeholder="Qtd. Inicial" class="w-1/2 p-3 border rounded-lg">
+                        </div>
+                        <button onclick="salvarLivro()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-bold">Salvar no Estoque</button>
                     </div>
-                    <button onclick="salvarLivro()" class="w-full bg-blue-600 text-white p-2 rounded font-bold">Salvar no Estoque</button>
                 </div>
 
-                <!-- Resumo de Vendas -->
-                <div class="bg-yellow-100 p-4 rounded-lg border">
-                    <h3 class="font-bold text-yellow-800">Vendas de Hoje</h3>
-                    <p class="text-2xl font-bold text-yellow-900" id="vendas-hoje">R$ 0,00</p>
+                <!-- ABA 2: ESTOQUE GERAL -->
+                <div id="tab-estoque" class="aba-conteudo hidden">
+                    <h3 class="font-bold text-lg mb-3">Relação Geral de Estoque</h3>
+                    <input type="text" id="filtro-estoque" placeholder="Pesquisar por título ou ISBN..." oninput="filtrarEstoque()" class="w-full p-2 mb-4 border rounded-lg text-sm">
+                    <div id="lista-estoque-geral" class="space-y-3">
+                        <!-- Carregado via JS -->
+                    </div>
                 </div>
-                <!-- Lista de Livros -->
-                <div class="mt-8 p-4">
-                <h3 class="font-bold text-lg mb-4">Seus Livros Cadastrados</h3>
-                <div id="lista-livros" class="space-y-4">
-        <!-- Os livros aparecerão aqui via JavaScript -->
-    </div>
-</div>
+
+                <!-- ABA 3: EDIÇÃO / EXCLUSÃO -->
+                <div id="tab-edicao" class="aba-conteudo hidden">
+                    <h3 class="font-bold text-lg mb-3">Gerenciar Itens (Editar / Excluir)</h3>
+                    <div id="lista-edicao" class="space-y-3">
+                        <!-- Carregado via JS -->
+                    </div>
+                </div>
+
+                <!-- ABA 4: VENDAS & RELATÓRIOS -->
+                <div id="tab-vendas" class="aba-conteudo hidden">
+                    <h3 class="font-bold text-lg mb-2">Realizar Venda por ISBN</h3>
+                    <button onclick="iniciarCamera('venda')" class="w-full bg-emerald-600 text-white p-3 rounded-lg font-bold flex justify-center items-center gap-2 mb-3">
+                        📷 Escanear para Vender
+                    </button>
+                    <div id="reader-venda" class="w-full mb-3"></div>
+                    <div class="flex gap-2 mb-6">
+                        <input type="text" id="venda-isbn" placeholder="Ou digite o ISBN e clique" class="w-2/3 p-2 border rounded-lg text-sm">
+                        <button onclick="venderPorIsbnManual()" class="w-1/3 bg-blue-600 text-white p-2 rounded-lg text-sm font-bold">Vender</button>
+                    </div>
+
+                    <div class="bg-yellow-100 p-4 rounded-lg border mb-6 shadow-sm">
+                        <h4 class="font-bold text-yellow-800 text-sm">Total de Vendas de Hoje</h4>
+                        <p class="text-3xl font-bold text-yellow-900 mt-1" id="vendas-hoje">R$ 0,00</p>
+                    </div>
+
+                    <h3 class="font-bold text-lg mb-3">Exportar Relatórios em Excel</h3>
+                    <div class="space-y-2">
+                        <button onclick="exportarExcel('diario')" class="w-full bg-green-700 text-white p-3 rounded-lg font-bold text-sm">📊 Baixar Relatório Diário (.xlsx)</button>
+                        <button onclick="exportarExcel('semanal')" class="w-full bg-green-600 text-white p-3 rounded-lg font-bold text-sm">📊 Baixar Relatório Semanal (.xlsx)</button>
+                        <button onclick="exportarExcel('mensal')" class="w-full bg-green-500 text-white p-3 rounded-lg font-bold text-sm">📊 Baixar Relatório Mensal (.xlsx)</button>
+                    </div>
+                </div>
+
             </div>
+
+            <!-- MENU INFERIOR (ABAS) -->
+            <div class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 flex justify-around p-3 shadow-lg z-50">
+                <button onclick="mudarAba('cadastro', 'Cadastro')" class="flex flex-col items-center text-blue-600 nav-btn" id="btn-cadastro">
+                    <span class="text-xl">➕</span>
+                    <span class="text-xs font-bold">Cadastrar</span>
+                </button>
+                <button onclick="mudarAba('estoque', 'Estoque Geral')" class="flex flex-col items-center text-gray-400 nav-btn" id="btn-estoque">
+                    <span class="text-xl">📚</span>
+                    <span class="text-xs font-bold">Estoque</span>
+                </button>
+                <button onclick="mudarAba('edicao', 'Editar / Excluir')" class="flex flex-col items-center text-gray-400 nav-btn" id="btn-edicao">
+                    <span class="text-xl">✏️</span>
+                    <span class="text-xs font-bold">Gerenciar</span>
+                </button>
+                <button onclick="mudarAba('vendas', 'Vendas e Relatórios')" class="flex flex-col items-center text-gray-400 nav-btn" id="btn-vendas">
+                    <span class="text-xl">💰</span>
+                    <span class="text-xs font-bold">Vendas</span>
+                </button>
+            </div>
+
         </div>
 
     </div>
 
-    <!-- O Arquivo de Lógica -->
+    <!-- MODAL DE EDIÇÃO -->
+    <div id="modal-edicao" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+        <div class="bg-white p-6 rounded-lg w-full max-w-sm">
+            <h3 class="font-bold text-lg mb-4">Editar Livro</h3>
+            <input type="hidden" id="edit-id">
+            <label class="text-xs text-gray-500">Título</label>
+            <input type="text" id="edit-titulo" class="w-full mb-2 p-2 border rounded text-sm">
+            <label class="text-xs text-gray-500">Preço (R$)</label>
+            <input type="number" step="0.01" id="edit-preco" class="w-full mb-2 p-2 border rounded text-sm">
+            <label class="text-xs text-gray-500">Quantidade em Estoque</label>
+            <input type="number" id="edit-qtd" class="w-full mb-4 p-2 border rounded text-sm">
+            <div class="flex gap-2">
+                <button onclick="salvarEdicao()" class="w-1/2 bg-blue-600 text-white p-2 rounded font-bold text-sm">Salvar</button>
+                <button onclick="fecharModal()" class="w-1/2 bg-gray-300 text-gray-700 p-2 rounded font-bold text-sm">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>
