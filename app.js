@@ -1,6 +1,6 @@
 // --- CONFIGURAÇÃO DO SUPABASE ---
 // COLE AQUI SUA URL E SUA CHAVE ANON DO SUPABASE
-const SUPABASE_URL = '[https://tvjadtkhjbbttszairxe.supabase.co](https://tvjadtkhjbbttszairxe.supabase.co)';
+const SUPABASE_URL = 'https://tvjadtkhjbbttszairxe.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amFkdGtoamJidHRzemFpcnhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwOTI3MDMsImV4cCI6MjEwMjY2ODcwM30.-5QfzCMPIzO7rV8CqTlnNkyWkoVGFnMwMYqDKDBzJXQ';
 
 const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
