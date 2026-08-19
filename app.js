@@ -1,9 +1,9 @@
 // --- CONFIGURAÇÃO DO SUPABASE ---
-// COLE AQUI SUA URL E SUA CHAVE ANON DO SUPABASE
 const SUPABASE_URL = 'https://tvjadtkhjbbttszairxe.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amFkdGtoamJidHRzemFpcnhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwOTI3MDMsImV4cCI6MjEwMjY2ODcwM30.-5QfzCMPIzO7rV8CqTlnNkyWkoVGFnMwMYqDKDBzJXQ';
 
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Usamos '_supabase' para não dar conflito com o nome global da biblioteca
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let usuarioAtual = null;
 let html5QrcodeScanner = null;
 
@@ -11,16 +11,16 @@ let html5QrcodeScanner = null;
 async function cadastrar() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('senha').value;
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await _supabase.auth.signUp({ email, password });
     
     if (error) document.getElementById('auth-msg').innerText = error.message;
-    else alert("Conta criada! Confirme seu e-mail (se necessário) ou faça login.");
+    else alert("Conta criada! Se necessário, faça login.");
 }
 
 async function login() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('senha').value;
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await _supabase.auth.signInWithPassword({ email, password });
     
     if (error) {
         document.getElementById('auth-msg').innerText = "Erro ao entrar. Verifique os dados.";
@@ -32,7 +32,7 @@ async function login() {
 }
 
 async function logout() {
-    await supabase.auth.signOut();
+    await _supabase.auth.signOut();
     mudarTela('login-screen');
 }
 
@@ -43,7 +43,7 @@ function mudarTela(telaId) {
 }
 
 // Verifica se já está logado ao abrir a página
-supabase.auth.getSession().then(({ data: { session } }) => {
+_supabase.auth.getSession().then(({ data: { session } }) => {
     if (session) {
         usuarioAtual = session.user;
         mudarTela('app-screen');
@@ -53,14 +53,13 @@ supabase.auth.getSession().then(({ data: { session } }) => {
 
 // --- 2. CÂMERA E ISBN ---
 function iniciarCamera() {
-    if(html5QrcodeScanner) return; // já está aberta
+    if(html5QrcodeScanner) return;
     
     html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 150} }, false);
     html5QrcodeScanner.render(aoLerCodigo, erroNaLeitura);
 }
 
 async function aoLerCodigo(textoLido) {
-    // Parar a câmera assim que ler
     html5QrcodeScanner.clear();
     html5QrcodeScanner = null;
     
@@ -68,9 +67,8 @@ async function aoLerCodigo(textoLido) {
     buscarDadosLivro(textoLido);
 }
 
-function erroNaLeitura(erro) { /* Ignorar erros frame a frame da câmera */ }
+function erroNaLeitura(erro) { /* Ignorar erros frame a frame */ }
 
-// Busca título na API gratuita do Google Books
 async function buscarDadosLivro(isbn) {
     try {
         const resposta = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
@@ -94,8 +92,7 @@ async function salvarLivro() {
 
     if(!isbn || !titulo || !preco) return alert("Preencha ISBN, Título e Preço!");
 
-    // Insere na tabela 'livros'
-    const { data, error } = await supabase
+    const { data, error } = await _supabase
         .from('livros')
         .insert([{ 
             isbn: isbn, 
@@ -109,7 +106,6 @@ async function salvarLivro() {
         alert("Erro ao salvar: " + error.message);
     } else {
         alert("Livro cadastrado com sucesso!");
-        // Limpar campos
         document.getElementById('isbn').value = '';
         document.getElementById('titulo').value = '';
         document.getElementById('preco').value = '';
@@ -119,11 +115,10 @@ async function salvarLivro() {
 
 // --- 4. RELATÓRIO DE VENDAS DIÁRIO ---
 async function carregarVendasHoje() {
-    // Pega a data de hoje à meia noite para filtrar
     const hoje = new Date();
     hoje.setHours(0,0,0,0);
 
-    const { data, error } = await supabase
+    const { data, error } = await _supabase
         .from('movimentacoes')
         .select('valor_total')
         .eq('tipo', 'venda')
