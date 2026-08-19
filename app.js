@@ -5,15 +5,15 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let usuarioAtual = null;
 let html5QrcodeScanner = null;
+let listaCacheLivros = [];
 
 // --- 1. AUTENTICAÇÃO ---
 async function cadastrar() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('senha').value;
-    const { data, error } = await _supabase.auth.signUp({ email, password });
-    
+    const { error } = await _supabase.auth.signUp({ email, password });
     if (error) document.getElementById('auth-msg').innerText = error.message;
-    else alert("Conta criada! Se necessário, faça login.");
+    else alert("Conta criada! Faça login.");
 }
 
 async function login() {
@@ -25,165 +25,283 @@ async function login() {
         document.getElementById('auth-msg').innerText = "Erro ao entrar. Verifique os dados.";
     } else {
         usuarioAtual = data.user;
-        mudarTela('app-screen');
-        carregarVendasHoje();
-        carregarLivros();
+        mudarTelaApp();
     }
 }
 
 async function logout() {
     await _supabase.auth.signOut();
-    mudarTela('login-screen');
-}
-
-function mudarTela(telaId) {
-    document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app-screen').classList.add('hidden');
-    document.getElementById(telaId).classList.remove('hidden');
+    document.getElementById('login-screen').classList.remove('hidden');
 }
 
-// Verifica se já está logado ao abrir a página
+function mudarTelaApp() {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('app-screen').classList.remove('hidden');
+    carregarDadosGlobais();
+}
+
 _supabase.auth.getSession().then(({ data: { session } }) => {
     if (session) {
         usuarioAtual = session.user;
-        mudarTela('app-screen');
-        carregarVendasHoje();
-        carregarLivros();
+        mudarTelaApp();
     }
 });
 
-// --- 2. CÂMERA E ISBN ---
-function iniciarCamera() {
-    if(html5QrcodeScanner) return;
-    
-    html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 150} }, false);
-    html5QrcodeScanner.render(aoLerCodigo, erroNaLeitura);
+// --- CONTROLE DE ABAS ---
+function mudarAba(abaId, titulo) {
+    document.querySelectorAll('.aba-conteudo').forEach(el => el.classList.add('hidden'));
+    document.getElementById(`tab-${abaId}`).classList.remove('hidden');
+    document.getElementById('titulo-aba').innerText = titulo;
+
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.classList.remove('text-blue-600');
+        btn.classList.add('text-gray-400');
+    });
+    document.getElementById(`btn-${abaId}`).classList.remove('text-gray-400');
+    document.getElementById(`btn-${abaId}`).classList.add('text-blue-600');
+
+    if (abaId === 'estoque' || abaId === 'edicao') carregarLivrosGeral();
+    if (abaId === 'vendas') carregarVendasHoje();
 }
 
-async function aoLerCodigo(textoLido) {
-    html5QrcodeScanner.clear();
-    html5QrcodeScanner = null;
-    
-    document.getElementById('isbn').value = textoLido;
-    buscarDadosLivro(textoLido);
+// --- CARREGAR DADOS GLOBAIS ---
+async function carregarDadosGlobais() {
+    const { data } = await _supabase.from('livros').select('*').order('titulo', { ascending: true });
+    if (data) listaCacheLivros = data;
+    carregarVendasHoje();
 }
 
-function erroNaLeitura(erro) { /* Ignorar erros frame a frame */ }
-
-async function buscarDadosLivro(isbn) {
-    try {
-        const resposta = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
-        const dados = await resposta.json();
-        if (dados.items && dados.items.length > 0) {
-            document.getElementById('titulo').value = dados.items[0].volumeInfo.title;
-        } else {
-            alert("Título não encontrado. Digite manualmente.");
-        }
-    } catch (e) {
-        console.log("Erro ao buscar livro na API", e);
+// --- CÂMERA DINÂMICA ---
+function iniciarCamera(modo) {
+    const elementoId = modo === 'cadastro' ? 'reader-cadastro' : 'reader-venda';
+    if(html5QrcodeScanner) {
+        html5QrcodeScanner.clear();
+        html5QrcodeScanner = null;
+    }
+    
+    html5QrcodeScanner = new Html5QrcodeScanner(elementoId, { fps: 10, qrbox: {width: 250, height: 150} }, false);
+    
+    if (modo === 'cadastro') {
+        html5QrcodeScanner.render(async (texto) => {
+            html5QrcodeScanner.clear();
+            html5QrcodeScanner = null;
+            document.getElementById('cad-isbn').value = texto;
+            buscarDadosGoogle(texto);
+        }, () => {});
+    } else {
+        html5QrcodeScanner.render(async (texto) => {
+            html5QrcodeScanner.clear();
+            html5QrcodeScanner = null;
+            document.getElementById('venda-isbn').value = texto;
+            processarVendaPorIsbn(texto);
+        }, () => {});
     }
 }
 
-// --- 3. BANCO DE DADOS (CADASTRAR LIVRO) ---
+async function buscarDadosGoogle(isbn) {
+    try {
+        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+        const dados = await res.json();
+        if (dados.items && dados.items.length > 0) {
+            document.getElementById('cad-titulo').value = dados.items[0].volumeInfo.title;
+        }
+    } catch (e) { console.log(e); }
+}
+
+// --- ABA 1: CADASTRAR ---
 async function salvarLivro() {
-    const isbn = document.getElementById('isbn').value;
-    const titulo = document.getElementById('titulo').value;
-    const preco = parseFloat(document.getElementById('preco').value);
-    const qtd = parseInt(document.getElementById('qtd').value);
+    const isbn = document.getElementById('cad-isbn').value;
+    const titulo = document.getElementById('cad-titulo').value;
+    const preco = parseFloat(document.getElementById('cad-preco').value);
+    const qtd = parseInt(document.getElementById('cad-qtd').value);
 
     if(!isbn || !titulo || !preco) return alert("Preencha ISBN, Título e Preço!");
 
-    const { data, error } = await _supabase
-        .from('livros')
-        .insert([{ 
-            isbn: isbn, 
-            titulo: titulo, 
-            preco: preco, 
-            quantidade: isNaN(qtd) ? 0 : qtd, 
-            user_id: usuarioAtual.id 
-        }]);
+    const { error } = await _supabase.from('livros').insert([{ 
+        isbn, titulo, preco, quantidade: isNaN(qtd) ? 0 : qtd, user_id: usuarioAtual.id 
+    }]);
 
-    if (error) {
-        alert("Erro ao salvar: " + error.message);
-    } else {
-        alert("Livro cadastrado com sucesso!");
-        document.getElementById('isbn').value = '';
-        document.getElementById('titulo').value = '';
-        document.getElementById('preco').value = '';
-        document.getElementById('qtd').value = '';
-        
-        carregarLivros();
+    if (error) alert("Erro: " + error.message);
+    else {
+        alert("Livro cadastrado!");
+        document.getElementById('cad-isbn').value = '';
+        document.getElementById('cad-titulo').value = '';
+        document.getElementById('cad-preco').value = '';
+        document.getElementById('cad-qtd').value = '';
+        carregarDadosGlobais();
     }
 }
 
-// --- 4. LISTAR E GERENCIAR ESTOQUE ---
-async function carregarLivros() {
-    const { data, error } = await _supabase
-        .from('livros')
-        .select('*')
-        .order('titulo', { ascending: true });
-
-    const listaDiv = document.getElementById('lista-livros');
-    if (!listaDiv) return;
+// --- ABA 2 E 3: ESTOQUE E EDIÇÃO/EXCLUSÃO ---
+async function carregarLivrosGeral() {
+    await carregarDadosGlobais();
     
-    listaDiv.innerHTML = '';
+    // Estoque Geral
+    const divEstoque = document.getElementById('lista-estoque-geral');
+    divEstoque.innerHTML = listaCacheLivros.length ? '' : '<p class="text-gray-500 text-center">Nenhum livro.</p>';
+    listaCacheLivros.forEach(l => {
+        divEstoque.innerHTML += `
+            <div class="p-3 border rounded-lg bg-white shadow-sm">
+                <p class="font-bold text-gray-800">${l.titulo}</p>
+                <p class="text-xs text-gray-500">ISBN: ${l.isbn || '-'}</p>
+                <p class="text-sm text-blue-600 font-semibold mt-1">Estoque: ${l.quantidade} | R$ ${Number(l.preco).toFixed(2)}</p>
+            </div>`;
+    });
 
-    if (data && data.length > 0) {
-        data.forEach(livro => {
-            listaDiv.innerHTML += `
-                <div class="p-3 border rounded-lg flex justify-between items-center bg-white shadow-sm">
-                    <div>
-                        <p class="font-bold text-gray-800">${livro.titulo}</p>
-                        <p class="text-xs text-gray-500">ISBN: ${livro.isbn || 'N/A'}</p>
-                        <p class="text-sm text-blue-600 font-semibold mt-1">Qtd: ${livro.quantidade} | R$ ${Number(livro.preco).toFixed(2)}</p>
-                    </div>
-                    <button onclick="venderLivro('${livro.id}', ${livro.preco})" class="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-bold shadow">Vender</button>
+    // Edição / Exclusão
+    const divEdicao = document.getElementById('lista-edicao');
+    divEdicao.innerHTML = listaCacheLivros.length ? '' : '<p class="text-gray-500 text-center">Nenhum livro.</p>';
+    listaCacheLivros.forEach(l => {
+        divEdicao.innerHTML += `
+            <div class="p-3 border rounded-lg flex justify-between items-center bg-white shadow-sm">
+                <div>
+                    <p class="font-bold text-gray-800 text-sm">${l.titulo}</p>
+                    <p class="text-xs text-gray-500">Qtd: ${l.quantidade} | R$ ${Number(l.preco).toFixed(2)}</p>
                 </div>
-            `;
-        });
-    } else {
-        listaDiv.innerHTML = '<p class="text-gray-500 text-sm text-center py-2">Nenhum livro cadastrado ainda.</p>';
-    }
+                <div class="flex gap-1">
+                    <button onclick="abrirModal(${l.id}, '${l.titulo.replace(/'/g, "")}', ${l.preco}, ${l.quantidade})" class="bg-blue-500 text-white px-2 py-1 rounded text-xs font-bold">Editar</button>
+                    <button onclick="excluirLivro(${l.id})" class="bg-red-500 text-white px-2 py-1 rounded text-xs font-bold">Excluir</button>
+                </div>
+            </div>`;
+    });
 }
 
-// --- 5. VENDER LIVRO (DEBITAR ESTOQUE) ---
-async function venderLivro(id, preco) {
-    const { data: livro } = await _supabase.from('livros').select('quantidade').eq('id', id).single();
+function filtrarEstoque() {
+    const termo = document.getElementById('filtro-estoque').value.toLowerCase();
+    const divEstoque = document.getElementById('lista-estoque-geral');
+    divEstoque.innerHTML = '';
     
-    if (livro && livro.quantidade > 0) {
-        await _supabase.from('livros').update({ quantidade: livro.quantidade - 1 }).eq('id', id);
-        
-        await _supabase.from('movimentacoes').insert([{
-            livro_id: id,
-            tipo: 'venda',
-            quantidade: 1,
-            valor_total: preco,
-            user_id: usuarioAtual.id
-        }]);
-        
-        carregarLivros();
-        carregarVendasHoje();
-    } else {
-        alert("Estoque esgotado para este livro!");
+    const filtrados = listaCacheLivros.filter(l => l.titulo.toLowerCase().includes(termo) || (l.isbn && l.isbn.includes(termo)));
+    
+    filtrados.forEach(l => {
+        divEstoque.innerHTML += `
+            <div class="p-3 border rounded-lg bg-white shadow-sm">
+                <p class="font-bold text-gray-800">${l.titulo}</p>
+                <p class="text-xs text-gray-500">ISBN: ${l.isbn || '-'}</p>
+                <p class="text-sm text-blue-600 font-semibold mt-1">Estoque: ${l.quantidade} | R$ ${Number(l.preco).toFixed(2)}</p>
+            </div>`;
+    });
+}
+
+// Modal Edição
+function abrirModal(id, titulo, preco, qtd) {
+    document.getElementById('edit-id').value = id;
+    document.getElementById('edit-titulo').value = titulo;
+    document.getElementById('edit-preco').value = preco;
+    document.getElementById('edit-qtd').value = qtd;
+    document.getElementById('modal-edicao').classList.remove('hidden');
+}
+function fecharModal() { document.getElementById('modal-edicao').classList.add('hidden'); }
+
+async function salvarEdicao() {
+    const id = document.getElementById('edit-id').value;
+    const titulo = document.getElementById('edit-titulo').value;
+    const preco = parseFloat(document.getElementById('edit-preco').value);
+    const quantidade = parseInt(document.getElementById('edit-qtd').value);
+
+    const { error } = await _supabase.from('livros').update({ titulo, preco, quantidade }).eq('id', id);
+    if (error) alert("Erro ao atualizar");
+    else {
+        fecharModal();
+        carregarLivrosGeral();
+        alert("Atualizado com sucesso!");
     }
 }
 
-// --- 6. RELATÓRIO DE VENDAS DIÁRIO ---
+async function excluirLivro(id) {
+    if (confirm("Tem certeza que deseja excluir este livro?")) {
+        await _supabase.from('livros').delete().eq('id', id);
+        carregarLivrosGeral();
+    }
+}
+
+// --- ABA 4: VENDAS & EXCEL ---
+function venderPorIsbnManual() {
+    const isbn = document.getElementById('venda-isbn').value;
+    processarVendaPorIsbn(isbn);
+}
+
+async function processarVendaPorIsbn(isbn) {
+    if (!isbn) return alert("Insira ou escaneie um ISBN!");
+    
+    const livro = listaCacheLivros.find(l => l.isbn === isbn);
+    if (!livro) return alert("Livro não encontrado com este ISBN no estoque!");
+
+    if (livro.quantidade <= 0) return alert("Estoque esgotado para este livro!");
+
+    // Atualiza estoque
+    await _supabase.from('livros').update({ quantidade: livro.quantidade - 1 }).eq('id', livro.id);
+    
+    // Registra movimentação
+    await _supabase.from('movimentacoes').insert([{
+        livro_id: livro.id,
+        tipo: 'venda',
+        quantidade: 1,
+        valor_total: livro.preco,
+        user_id: usuarioAtual.id
+    }]);
+
+    document.getElementById('venda-isbn').value = '';
+    alert(`Venda realizada: ${livro.titulo} (R$ ${livro.preco})`);
+    carregarDadosGlobais();
+}
+
 async function carregarVendasHoje() {
     const hoje = new Date();
     hoje.setHours(0,0,0,0);
 
+    const { data } = await _supabase.from('movimentacoes').select('valor_total').eq('tipo', 'venda').gte('data_hora', hoje.toISOString());
+    if (data) {
+        const total = data.reduce((soma, m) => soma + Number(m.valor_total), 0);
+        document.getElementById('vendas-hoje').innerText = `R$ ${total.toFixed(2)}`;
+    }
+}
+
+// EXPORTAR EXCEL (DIÁRIO, SEMANAL, MENSAL)
+async function exportarExcel(periodo) {
+    const agora = new Date();
+    let dataLimite = new Date();
+
+    if (periodo === 'diario') {
+        dataLimite.setHours(0,0,0,0);
+    } else if (periodo === 'semanal') {
+        dataLimite.setDate(agora.getDate() - 7);
+    } else if (periodo === 'mensal') {
+        dataLimite.setMonth(agora.getMonth() - 1);
+    }
+
     const { data, error } = await _supabase
         .from('movimentacoes')
-        .select('valor_total')
+        .select(`
+            id,
+            quantidade,
+            valor_total,
+            data_hora,
+            livros (titulo, isbn, preco)
+        `)
         .eq('tipo', 'venda')
-        .gte('data_hora', hoje.toISOString());
+        .gte('data_hora', dataLimite.toISOString())
+        .order('data_hora', { ascending: false });
 
-    if (data) {
-        const total = data.reduce((soma, mov) => soma + Number(mov.valor_total), 0);
-        const elementoVendas = document.getElementById('vendas-hoje');
-        if (elementoVendas) {
-            elementoVendas.innerText = `R$ ${total.toFixed(2)}`;
-        }
+    if (error || !data || data.length === 0) {
+        return alert("Nenhuma venda encontrada para o período selecionado.");
     }
+
+    // Organizar dados para a planilha
+    const formatado = data.map(m => ({
+        'Data / Hora': new Date(m.data_hora).toLocaleString('pt-BR'),
+        'Título do Livro': m.livros ? m.livros.titulo : 'Removido',
+        'ISBN': m.livros ? m.livros.isbn : '-',
+        'Quantidade': m.quantidade,
+        'Valor Total (R$)': Number(m.valor_total)
+    }));
+
+    // Criar arquivo Excel
+    const worksheet = XLSX.utils.json_to_sheet(formatado);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
+
+    // Baixar arquivo no celular/computador
+    XLSX.writeFile(workbook, `relatorio_vendas_${periodo}.xlsx`);
 }
