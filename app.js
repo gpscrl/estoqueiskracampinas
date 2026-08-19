@@ -2,10 +2,15 @@
 const SUPABASE_URL = 'https://tvjadtkhjbbttszairxe.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amFkdGtoamJidHRzemFpcnhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwOTI3MDMsImV4cCI6MjEwMjY2ODcwM30.-5QfzCMPIzO7rV8CqTlnNkyWkoVGFnMwMYqDKDBzJXQ';
 
+// --- CONFIGURAÇÃO DO SUPABASE ---
+const SUPABASE_URL = 'https://SEU_PROJETO.supabase.co';
+const SUPABASE_KEY = 'SUA_CHAVE_ANON_AQUI';
+
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let usuarioAtual = null;
 let html5QrcodeScanner = null;
 let listaCacheLivros = [];
+let carrinhoAtual = []; // Guarda os itens da venda atual
 
 // --- 1. AUTENTICAÇÃO ---
 async function cadastrar() {
@@ -94,7 +99,7 @@ function iniciarCamera(modo) {
             html5QrcodeScanner.clear();
             html5QrcodeScanner = null;
             document.getElementById('venda-isbn').value = texto;
-            processarVendaPorIsbn(texto);
+            adicionarAoCarrinhoPorIsbn();
         }, () => {});
     }
 }
@@ -137,7 +142,6 @@ async function salvarLivro() {
 async function carregarLivrosGeral() {
     await carregarDadosGlobais();
     
-    // Estoque Geral
     const divEstoque = document.getElementById('lista-estoque-geral');
     divEstoque.innerHTML = listaCacheLivros.length ? '' : '<p class="text-gray-500 text-center">Nenhum livro.</p>';
     listaCacheLivros.forEach(l => {
@@ -149,7 +153,6 @@ async function carregarLivrosGeral() {
             </div>`;
     });
 
-    // Edição / Exclusão
     const divEdicao = document.getElementById('lista-edicao');
     divEdicao.innerHTML = listaCacheLivros.length ? '' : '<p class="text-gray-500 text-center">Nenhum livro.</p>';
     listaCacheLivros.forEach(l => {
@@ -171,7 +174,6 @@ function filtrarEstoque() {
     const termo = document.getElementById('filtro-estoque').value.toLowerCase();
     const divEstoque = document.getElementById('lista-estoque-geral');
     divEstoque.innerHTML = '';
-    
     const filtrados = listaCacheLivros.filter(l => l.titulo.toLowerCase().includes(termo) || (l.isbn && l.isbn.includes(termo)));
     
     filtrados.forEach(l => {
@@ -184,7 +186,6 @@ function filtrarEstoque() {
     });
 }
 
-// Modal Edição
 function abrirModal(id, titulo, preco, qtd) {
     document.getElementById('edit-id').value = id;
     document.getElementById('edit-titulo').value = titulo;
@@ -216,34 +217,125 @@ async function excluirLivro(id) {
     }
 }
 
-// --- ABA 4: VENDAS & EXCEL ---
-function venderPorIsbnManual() {
-    const isbn = document.getElementById('venda-isbn').value;
-    processarVendaPorIsbn(isbn);
-}
-
-async function processarVendaPorIsbn(isbn) {
+// --- ABA 4: CARRINHO E VENDAS ---
+function adicionarAoCarrinhoPorIsbn() {
+    const isbn = document.getElementById('venda-isbn').value.trim();
     if (!isbn) return alert("Insira ou escaneie um ISBN!");
-    
+
     const livro = listaCacheLivros.find(l => l.isbn === isbn);
-    if (!livro) return alert("Livro não encontrado com este ISBN no estoque!");
+    if (!livro) return alert("Livro não encontrado com este ISBN!");
 
-    if (livro.quantidade <= 0) return alert("Estoque esgotado para este livro!");
+    if (livro.quantidade <= 0) return alert("Este livro está esgotado no estoque!");
 
-    // Atualiza estoque
-    await _supabase.from('livros').update({ quantidade: livro.quantidade - 1 }).eq('id', livro.id);
-    
-    // Registra movimentação
-    await _supabase.from('movimentacoes').insert([{
-        livro_id: livro.id,
-        tipo: 'venda',
-        quantidade: 1,
-        valor_total: livro.preco,
-        user_id: usuarioAtual.id
-    }]);
+    // Verificar se já está no carrinho
+    const itemExistente = carrinhoAtual.find(i => i.id === livro.id);
+    if (itemExistente) {
+        if (itemExistente.qtd < livro.quantidade) {
+            itemExistente.qtd++;
+        } else {
+            alert("Quantidade máxima disponível em estoque atingida!");
+        }
+    } else {
+        carrinhoAtual.push({
+            id: livro.id,
+            titulo: livro.titulo,
+            preco: livro.preco,
+            qtd: 1,
+            estoqueMax: livro.quantidade
+        });
+    }
 
     document.getElementById('venda-isbn').value = '';
-    alert(`Venda realizada: ${livro.titulo} (R$ ${livro.preco})`);
+    renderizarCarrinho();
+}
+
+function alterarQtdCarrinho(id, delta) {
+    const item = carrinhoAtual.find(i => i.id === id);
+    if (item) {
+        item.qtd += delta;
+        if (item.qtd <= 0) {
+            carrinhoAtual = carrinhoAtual.filter(i => i.id !== id);
+        } else if (item.qtd > item.estoqueMax) {
+            item.qtd = item.estoqueMax;
+            alert("Estoque máximo atingido.");
+        }
+        renderizarCarrinho();
+    }
+}
+
+function renderizarCarrinho() {
+    const div = document.getElementById('lista-carrinho');
+    div.innerHTML = '';
+
+    if (carrinhoAtual.length === 0) {
+        div.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">Nenhum item adicionado ainda.</p>';
+        document.getElementById('carrinho-total').innerText = 'R$ 0,00';
+        return;
+    }
+
+    let totalGeral = 0;
+    carrinhoAtual.forEach(item => {
+        const subtotal = item.preco * item.qtd;
+        totalGeral += subtotal;
+        div.innerHTML += `
+            <div class="flex justify-between items-center bg-white p-2 rounded border text-xs">
+                <div>
+                    <p class="font-bold text-gray-800">${item.titulo}</p>
+                    <p class="text-gray-500">R$ ${Number(item.preco).toFixed(2)} un</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="alterarQtdCarrinho('${item.id}', -1)" class="bg-gray-200 px-2 py-0.5 rounded font-bold">-</button>
+                    <span class="font-bold">${item.qtd}</span>
+                    <button onclick="alterarQtdCarrinho('${item.id}', 1)" class="bg-gray-200 px-2 py-0.5 rounded font-bold">+</button>
+                    <span class="font-semibold text-blue-600">R$ ${subtotal.toFixed(2)}</span>
+                </div>
+            </div>
+        `;
+    });
+
+    document.getElementById('carrinho-total').innerText = `R$ ${totalGeral.toFixed(2)}`;
+}
+
+async function finalizarVenda() {
+    if (carrinhoAtual.length === 0) return alert("A cesta está vazia!");
+
+    const nomeCliente = document.getElementById('cli-nome').value.trim() || null;
+    const emailCliente = document.getElementById('cli-email').value.trim() || null;
+
+    // Gerar número sequencial único baseado no timestamp atual (Ex: 2603181245)
+    const codigoVendaSeq = Math.floor(Date.now() / 1000); 
+
+    let totalVenda = 0;
+
+    // Processar cada item da cesta
+    for (const item of carrinhoAtual) {
+        const subtotal = item.preco * item.qtd;
+        totalVenda += subtotal;
+
+        // Atualizar estoque no Supabase
+        const novoEstoque = item.estoqueMax - item.qtd;
+        await _supabase.from('livros').update({ quantidade: novoEstoque }).eq('id', item.id);
+
+        // Inserir registro na tabela movimentacoes
+        await _supabase.from('movimentacoes').insert([{
+            livro_id: item.id,
+            tipo: 'venda',
+            quantidade: item.qtd,
+            valor_total: subtotal,
+            codigo_venda: codigoVendaSeq,
+            cliente_nome: nomeCliente,
+            cliente_email: emailCliente,
+            user_id: usuarioAtual.id
+        }]);
+    }
+
+    alert(`Venda #${codigoVendaSeq} finalizada!\nTotal a passar na maquininha: R$ ${totalVenda.toFixed(2)}`);
+
+    // Limpar carrinho e inputs
+    carrinhoAtual = [];
+    document.getElementById('cli-nome').value = '';
+    document.getElementById('cli-email').value = '';
+    renderizarCarrinho();
     carregarDadosGlobais();
 }
 
@@ -274,10 +366,12 @@ async function exportarExcel(periodo) {
     const { data, error } = await _supabase
         .from('movimentacoes')
         .select(`
-            id,
+            codigo_venda,
             quantidade,
             valor_total,
             data_hora,
+            cliente_nome,
+            cliente_email,
             livros (titulo, isbn, preco)
         `)
         .eq('tipo', 'venda')
@@ -288,20 +382,20 @@ async function exportarExcel(periodo) {
         return alert("Nenhuma venda encontrada para o período selecionado.");
     }
 
-    // Organizar dados para a planilha
     const formatado = data.map(m => ({
+        'Nº Venda': m.codigo_venda || '-',
         'Data / Hora': new Date(m.data_hora).toLocaleString('pt-BR'),
         'Título do Livro': m.livros ? m.livros.titulo : 'Removido',
         'ISBN': m.livros ? m.livros.isbn : '-',
         'Quantidade': m.quantidade,
-        'Valor Total (R$)': Number(m.valor_total)
+        'Valor Total (R$)': Number(m.valor_total),
+        'Nome Cliente': m.cliente_nome || 'Não informado',
+        'E-mail Cliente': m.cliente_email || 'Não informado'
     }));
 
-    // Criar arquivo Excel
     const worksheet = XLSX.utils.json_to_sheet(formatado);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
 
-    // Baixar arquivo no celular/computador
     XLSX.writeFile(workbook, `relatorio_vendas_${periodo}.xlsx`);
 }
