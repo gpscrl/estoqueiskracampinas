@@ -44,7 +44,13 @@ async function iniciarSessao(user) {
     usuarioAtual = user;
     
     // Buscar perfil do banco
-    const { data } = await _supabase.from('perfis').select('role').eq('id', user.id).single();
+    const { data, error } = await _supabase.from('perfis').select('role').eq('id', user.id).single();
+    
+    // SE DER ERRO, VAI MOSTRAR NO CONSOLE:
+    if (error) {
+        console.error("Erro ao buscar o perfil no Supabase:", error);
+    }
+
     perfilAtual = data ? data.role : 'normal';
     
     document.getElementById('user-info').innerText = `${user.email} (${perfilAtual.toUpperCase()})`;
@@ -57,7 +63,7 @@ async function iniciarSessao(user) {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app-screen').classList.remove('hidden');
     
-    mudarAba('vendas', 'Frente de Caixa'); // Aba inicial
+    mudarAba('vendas', 'Frente de Caixa'); 
     carregarDadosGlobais();
     iniciarTempoReal();
 }
