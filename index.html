@@ -115,6 +115,22 @@
                     <button onclick="exportarExcel('mensal')" class="w-full bg-green-500 text-white p-3 rounded-lg font-bold">📊 Baixar Relatório Mensal</button>
                 </div>
             </div>
+            <!-- Área Master no Relatório / Gerenciamento -->
+<div class="master-only flex-col gap-3 mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+    <p class="font-bold text-sm text-slate-500 uppercase tracking-wider">Ações Administrativas (Master)</p>
+
+    <div class="flex flex-wrap gap-3">
+        <!-- Botão para apagar uma venda específica -->
+        <button onclick="excluirVendaPorCodigo()" class="bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2">
+            🗑️ Apagar Venda Específica (#)
+        </button>
+
+        <!-- Botão para limpar vendas dos últimos 30 dias -->
+        <button onclick="limparHistoricoVendas30Dias()" class="bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2">
+            ⚠️ Limpar Vendas dos Últimos 30 Dias
+        </button>
+    </div>
+</div>
 
             <!-- ABA: USUÁRIOS (Master) -->
             <div id="tab-usuarios" class="aba-conteudo hidden">
