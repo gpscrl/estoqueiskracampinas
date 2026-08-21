@@ -1,22 +1,33 @@
 // --- CONFIGURAÇÃO DO SUPABASE ---
 const SUPABASE_URL = 'https://tvjadtkhjbbttszairxe.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amFkdGtoamJidHRzemFpcnhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwOTI3MDMsImV4cCI6MjEwMjY2ODcwM30.-5QfzCMPIzO7rV8CqTlnNkyWkoVGFnMwMYqDKDBzJXQ';
+const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amFkdGtoamJidHRzemFpcnhlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzA5MjcwMywiZXhwIjoyMTAyNjY4NzAzfQ.C_IUxWSEuFpy72jo2-aQORUSZdNPPtuC1Xk7EYqId30'; // Usada apenas para gerenciar os usuários!
 
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+// Cliente Admin exclusivo para criar/deletar usuários sem perder a sessão atual
+const _adminAuth = supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
+
 let usuarioAtual = null;
+let perfilAtual = null; // 'master' ou 'normal'
 let html5QrcodeScanner = null;
 let listaCacheLivros = [];
-let carrinhoAtual = []; // Guarda os itens da venda atual
+let carrinhoAtual = [];
 
-// --- 1. AUTENTICAÇÃO ---
-async function cadastrar() {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('senha').value;
-    const { error } = await _supabase.auth.signUp({ email, password });
-    if (error) document.getElementById('auth-msg').innerText = error.message;
-    else alert("Conta criada! Faça login.");
+// --- TEMA (MODO NOTURNO) ---
+function toggleDarkMode() {
+    const html = document.documentElement;
+    if (html.classList.contains('dark')) {
+        html.classList.remove('dark');
+        localStorage.setItem('tema', 'light');
+    } else {
+        html.classList.add('dark');
+        localStorage.setItem('tema', 'dark');
+    }
 }
+// Carregar tema salvo
+if (localStorage.getItem('tema') === 'dark') document.documentElement.classList.add('dark');
 
+// --- AUTENTICAÇÃO E PERFIS ---
 async function login() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('senha').value;
@@ -25,93 +36,123 @@ async function login() {
     if (error) {
         document.getElementById('auth-msg').innerText = "Erro ao entrar. Verifique os dados.";
     } else {
-        usuarioAtual = data.user;
-        mudarTelaApp();
+        await iniciarSessao(data.user);
     }
+}
+
+async function iniciarSessao(user) {
+    usuarioAtual = user;
+    
+    // Buscar perfil do banco
+    const { data } = await _supabase.from('perfis').select('role').eq('id', user.id).single();
+    perfilAtual = data ? data.role : 'normal';
+    
+    document.getElementById('user-info').innerText = `${user.email} (${perfilAtual.toUpperCase()})`;
+    
+    // Esconder/Mostrar abas dependendo da hierarquia
+    document.querySelectorAll('.master-only').forEach(el => {
+        el.style.display = perfilAtual === 'master' ? 'block' : 'none';
+    });
+
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('app-screen').classList.remove('hidden');
+    
+    mudarAba('vendas', 'Frente de Caixa'); // Aba inicial
+    carregarDadosGlobais();
+    iniciarTempoReal();
 }
 
 async function logout() {
     await _supabase.auth.signOut();
-    document.getElementById('app-screen').classList.add('hidden');
-    document.getElementById('login-screen').classList.remove('hidden');
+    location.reload(); // Recarrega a página para limpar tudo
 }
 
-function mudarTelaApp() {
-    document.getElementById('login-screen').classList.add('hidden');
-    document.getElementById('app-screen').classList.remove('hidden');
-    carregarDadosGlobais();
-}
-
+// Checar sessão ativa ao abrir o app
 _supabase.auth.getSession().then(({ data: { session } }) => {
-    if (session) {
-        usuarioAtual = session.user;
-        mudarTelaApp();
-    }
+    if (session) iniciarSessao(session.user);
 });
+
+// --- TEMPO REAL (REALTIME SUPABASE) ---
+function iniciarTempoReal() {
+    _supabase.channel('tabelas-gerais')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'livros' }, payload => {
+            carregarDadosGlobais(); // Alguém mexeu no estoque, atualiza a tela
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'movimentacoes' }, payload => {
+            carregarVendasHoje(); // Alguém fez venda, atualiza o relatório
+        })
+        .subscribe();
+}
 
 // --- CONTROLE DE ABAS ---
 function mudarAba(abaId, titulo) {
+    // Bloquear acesso direto se for normal tentando acessar aba de master
+    if (perfilAtual !== 'master' && ['cadastrar', 'relatorios', 'usuarios'].includes(abaId)) return;
+
     document.querySelectorAll('.aba-conteudo').forEach(el => el.classList.add('hidden'));
     document.getElementById(`tab-${abaId}`).classList.remove('hidden');
     document.getElementById('titulo-aba').innerText = titulo;
 
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('text-blue-600');
+        btn.classList.remove('text-blue-600', 'dark:text-blue-400');
         btn.classList.add('text-gray-400');
     });
-    document.getElementById(`btn-${abaId}`).classList.remove('text-gray-400');
-    document.getElementById(`btn-${abaId}`).classList.add('text-blue-600');
+    const btnAtivo = document.getElementById(`btn-${abaId}`);
+    if(btnAtivo) {
+        btnAtivo.classList.remove('text-gray-400');
+        btnAtivo.classList.add('text-blue-600', 'dark:text-blue-400');
+    }
 
-    if (abaId === 'estoque' || abaId === 'edicao') carregarLivrosGeral();
-    if (abaId === 'vendas') carregarVendasHoje();
+    if (abaId === 'usuarios') carregarUsuarios();
 }
 
-// --- CARREGAR DADOS GLOBAIS ---
+// --- BANCO DE DADOS GERAL ---
 async function carregarDadosGlobais() {
     const { data } = await _supabase.from('livros').select('*').order('titulo', { ascending: true });
     if (data) listaCacheLivros = data;
+    
+    renderizarEstoqueGeral();
     carregarVendasHoje();
 }
 
-// --- CÂMERA DINÂMICA ---
-function iniciarCamera(modo) {
-    const elementoId = modo === 'cadastro' ? 'reader-cadastro' : 'reader-venda';
-    if(html5QrcodeScanner) {
-        html5QrcodeScanner.clear();
-        html5QrcodeScanner = null;
-    }
+// --- ESTOQUE ---
+function renderizarEstoqueGeral() {
+    const termo = (document.getElementById('filtro-estoque') ? document.getElementById('filtro-estoque').value.toLowerCase() : '');
+    const divEstoque = document.getElementById('lista-estoque-geral');
+    if(!divEstoque) return;
     
-    html5QrcodeScanner = new Html5QrcodeScanner(elementoId, { fps: 10, qrbox: {width: 250, height: 150} }, false);
+    divEstoque.innerHTML = '';
+    const filtrados = listaCacheLivros.filter(l => l.titulo.toLowerCase().includes(termo) || (l.isbn && l.isbn.includes(termo)));
     
-    if (modo === 'cadastro') {
-        html5QrcodeScanner.render(async (texto) => {
-            html5QrcodeScanner.clear();
-            html5QrcodeScanner = null;
-            document.getElementById('cad-isbn').value = texto;
-            buscarDadosGoogle(texto);
-        }, () => {});
-    } else {
-        html5QrcodeScanner.render(async (texto) => {
-            html5QrcodeScanner.clear();
-            html5QrcodeScanner = null;
-            document.getElementById('venda-isbn').value = texto;
-            adicionarAoCarrinhoPorIsbn();
-        }, () => {});
+    if(filtrados.length === 0) {
+        divEstoque.innerHTML = '<p class="text-gray-500 text-center">Nenhum livro encontrado.</p>';
+        return;
     }
+
+    filtrados.forEach(l => {
+        // Se for master, exibe os botões. Se for normal, esconde.
+        const botoesAcao = perfilAtual === 'master' ? `
+            <div class="flex gap-1 mt-2">
+                <button onclick="abrirModal(${l.id}, '${l.titulo.replace(/'/g, "")}', ${l.preco}, ${l.quantidade})" class="bg-blue-500 text-white px-3 py-1 rounded text-xs font-bold w-full">Editar</button>
+                <button onclick="excluirLivro(${l.id})" class="bg-red-500 text-white px-3 py-1 rounded text-xs font-bold w-full">Excluir</button>
+            </div>
+        ` : '';
+
+        divEstoque.innerHTML += `
+            <div class="p-3 border rounded-lg bg-white dark:bg-gray-800 dark:border-gray-700 shadow-sm flex flex-col">
+                <p class="font-bold text-gray-800 dark:text-gray-200">${l.titulo}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">ISBN: ${l.isbn || '-'}</p>
+                <p class="text-sm text-blue-600 dark:text-blue-400 font-semibold mt-1">Estoque: ${l.quantidade} un. | R$ ${Number(l.preco).toFixed(2)}</p>
+                ${botoesAcao}
+            </div>`;
+    });
 }
 
-async function buscarDadosGoogle(isbn) {
-    try {
-        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
-        const dados = await res.json();
-        if (dados.items && dados.items.length > 0) {
-            document.getElementById('cad-titulo').value = dados.items[0].volumeInfo.title;
-        }
-    } catch (e) { console.log(e); }
-}
+function filtrarEstoque() { renderizarEstoqueGeral(); }
 
-// --- ABA 1: CADASTRAR ---
+// --- CADASTRO / EDIÇÃO DE LIVROS (MASTER) ---
 async function salvarLivro() {
+    if (perfilAtual !== 'master') return;
     const isbn = document.getElementById('cad-isbn').value;
     const titulo = document.getElementById('cad-titulo').value;
     const preco = parseFloat(document.getElementById('cad-preco').value);
@@ -119,67 +160,13 @@ async function salvarLivro() {
 
     if(!isbn || !titulo || !preco) return alert("Preencha ISBN, Título e Preço!");
 
-    const { error } = await _supabase.from('livros').insert([{ 
-        isbn, titulo, preco, quantidade: isNaN(qtd) ? 0 : qtd, user_id: usuarioAtual.id 
-    }]);
-
+    const { error } = await _supabase.from('livros').insert([{ isbn, titulo, preco, quantidade: isNaN(qtd) ? 0 : qtd }]);
     if (error) alert("Erro: " + error.message);
     else {
         alert("Livro cadastrado!");
-        document.getElementById('cad-isbn').value = '';
-        document.getElementById('cad-titulo').value = '';
-        document.getElementById('cad-preco').value = '';
-        document.getElementById('cad-qtd').value = '';
-        carregarDadosGlobais();
+        document.getElementById('cad-isbn').value = ''; document.getElementById('cad-titulo').value = '';
+        document.getElementById('cad-preco').value = ''; document.getElementById('cad-qtd').value = '';
     }
-}
-
-// --- ABA 2 E 3: ESTOQUE E EDIÇÃO/EXCLUSÃO ---
-async function carregarLivrosGeral() {
-    await carregarDadosGlobais();
-    
-    const divEstoque = document.getElementById('lista-estoque-geral');
-    divEstoque.innerHTML = listaCacheLivros.length ? '' : '<p class="text-gray-500 text-center">Nenhum livro.</p>';
-    listaCacheLivros.forEach(l => {
-        divEstoque.innerHTML += `
-            <div class="p-3 border rounded-lg bg-white shadow-sm">
-                <p class="font-bold text-gray-800">${l.titulo}</p>
-                <p class="text-xs text-gray-500">ISBN: ${l.isbn || '-'}</p>
-                <p class="text-sm text-blue-600 font-semibold mt-1">Estoque: ${l.quantidade} | R$ ${Number(l.preco).toFixed(2)}</p>
-            </div>`;
-    });
-
-    const divEdicao = document.getElementById('lista-edicao');
-    divEdicao.innerHTML = listaCacheLivros.length ? '' : '<p class="text-gray-500 text-center">Nenhum livro.</p>';
-    listaCacheLivros.forEach(l => {
-        divEdicao.innerHTML += `
-            <div class="p-3 border rounded-lg flex justify-between items-center bg-white shadow-sm">
-                <div>
-                    <p class="font-bold text-gray-800 text-sm">${l.titulo}</p>
-                    <p class="text-xs text-gray-500">Qtd: ${l.quantidade} | R$ ${Number(l.preco).toFixed(2)}</p>
-                </div>
-                <div class="flex gap-1">
-                    <button onclick="abrirModal(${l.id}, '${l.titulo.replace(/'/g, "")}', ${l.preco}, ${l.quantidade})" class="bg-blue-500 text-white px-2 py-1 rounded text-xs font-bold">Editar</button>
-                    <button onclick="excluirLivro(${l.id})" class="bg-red-500 text-white px-2 py-1 rounded text-xs font-bold">Excluir</button>
-                </div>
-            </div>`;
-    });
-}
-
-function filtrarEstoque() {
-    const termo = document.getElementById('filtro-estoque').value.toLowerCase();
-    const divEstoque = document.getElementById('lista-estoque-geral');
-    divEstoque.innerHTML = '';
-    const filtrados = listaCacheLivros.filter(l => l.titulo.toLowerCase().includes(termo) || (l.isbn && l.isbn.includes(termo)));
-    
-    filtrados.forEach(l => {
-        divEstoque.innerHTML += `
-            <div class="p-3 border rounded-lg bg-white shadow-sm">
-                <p class="font-bold text-gray-800">${l.titulo}</p>
-                <p class="text-xs text-gray-500">ISBN: ${l.isbn || '-'}</p>
-                <p class="text-sm text-blue-600 font-semibold mt-1">Estoque: ${l.quantidade} | R$ ${Number(l.preco).toFixed(2)}</p>
-            </div>`;
-    });
 }
 
 function abrirModal(id, titulo, preco, qtd) {
@@ -197,50 +184,32 @@ async function salvarEdicao() {
     const preco = parseFloat(document.getElementById('edit-preco').value);
     const quantidade = parseInt(document.getElementById('edit-qtd').value);
 
-    const { error } = await _supabase.from('livros').update({ titulo, preco, quantidade }).eq('id', id);
-    if (error) alert("Erro ao atualizar");
-    else {
-        fecharModal();
-        carregarLivrosGeral();
-        alert("Atualizado com sucesso!");
-    }
+    await _supabase.from('livros').update({ titulo, preco, quantidade }).eq('id', id);
+    fecharModal();
 }
 
 async function excluirLivro(id) {
-    if (confirm("Tem certeza que deseja excluir este livro?")) {
+    if (confirm("Excluir este livro definitivamente?")) {
         await _supabase.from('livros').delete().eq('id', id);
-        carregarLivrosGeral();
     }
 }
 
-// --- ABA 4: CARRINHO E VENDAS ---
+// --- VENDAS & CARRINHO (TODOS) ---
 function adicionarAoCarrinhoPorIsbn() {
     const isbn = document.getElementById('venda-isbn').value.trim();
-    if (!isbn) return alert("Insira ou escaneie um ISBN!");
+    if (!isbn) return alert("Insira um ISBN!");
 
     const livro = listaCacheLivros.find(l => l.isbn === isbn);
-    if (!livro) return alert("Livro não encontrado com este ISBN!");
+    if (!livro) return alert("Livro não encontrado!");
+    if (livro.quantidade <= 0) return alert("Esgotado!");
 
-    if (livro.quantidade <= 0) return alert("Este livro está esgotado no estoque!");
-
-    // Verificar se já está no carrinho
     const itemExistente = carrinhoAtual.find(i => i.id === livro.id);
     if (itemExistente) {
-        if (itemExistente.qtd < livro.quantidade) {
-            itemExistente.qtd++;
-        } else {
-            alert("Quantidade máxima disponível em estoque atingida!");
-        }
+        if (itemExistente.qtd < livro.quantidade) itemExistente.qtd++;
+        else alert("Estoque máximo atingido!");
     } else {
-        carrinhoAtual.push({
-            id: livro.id,
-            titulo: livro.titulo,
-            preco: livro.preco,
-            qtd: 1,
-            estoqueMax: livro.quantidade
-        });
+        carrinhoAtual.push({ id: livro.id, titulo: livro.titulo, preco: livro.preco, qtd: 1, estoqueMax: livro.quantidade });
     }
-
     document.getElementById('venda-isbn').value = '';
     renderizarCarrinho();
 }
@@ -249,12 +218,8 @@ function alterarQtdCarrinho(id, delta) {
     const item = carrinhoAtual.find(i => i.id === id);
     if (item) {
         item.qtd += delta;
-        if (item.qtd <= 0) {
-            carrinhoAtual = carrinhoAtual.filter(i => i.id !== id);
-        } else if (item.qtd > item.estoqueMax) {
-            item.qtd = item.estoqueMax;
-            alert("Estoque máximo atingido.");
-        }
+        if (item.qtd <= 0) carrinhoAtual = carrinhoAtual.filter(i => i.id !== id);
+        else if (item.qtd > item.estoqueMax) { item.qtd = item.estoqueMax; alert("Limite de estoque!"); }
         renderizarCarrinho();
     }
 }
@@ -262,136 +227,155 @@ function alterarQtdCarrinho(id, delta) {
 function renderizarCarrinho() {
     const div = document.getElementById('lista-carrinho');
     div.innerHTML = '';
-
     if (carrinhoAtual.length === 0) {
-        div.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">Nenhum item adicionado ainda.</p>';
+        div.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">Cesta vazia.</p>';
         document.getElementById('carrinho-total').innerText = 'R$ 0,00';
         return;
     }
-
     let totalGeral = 0;
     carrinhoAtual.forEach(item => {
         const subtotal = item.preco * item.qtd;
         totalGeral += subtotal;
         div.innerHTML += `
-            <div class="flex justify-between items-center bg-white p-2 rounded border text-xs">
+            <div class="flex justify-between items-center bg-white dark:bg-gray-700 p-2 rounded border dark:border-gray-600 text-xs">
                 <div>
-                    <p class="font-bold text-gray-800">${item.titulo}</p>
-                    <p class="text-gray-500">R$ ${Number(item.preco).toFixed(2)} un</p>
+                    <p class="font-bold text-gray-800 dark:text-gray-200">${item.titulo}</p>
+                    <p class="text-gray-500 dark:text-gray-400">R$ ${Number(item.preco).toFixed(2)} un</p>
                 </div>
                 <div class="flex items-center gap-2">
-                    <button onclick="alterarQtdCarrinho('${item.id}', -1)" class="bg-gray-200 px-2 py-0.5 rounded font-bold">-</button>
-                    <span class="font-bold">${item.qtd}</span>
-                    <button onclick="alterarQtdCarrinho('${item.id}', 1)" class="bg-gray-200 px-2 py-0.5 rounded font-bold">+</button>
-                    <span class="font-semibold text-blue-600">R$ ${subtotal.toFixed(2)}</span>
+                    <button onclick="alterarQtdCarrinho('${item.id}', -1)" class="bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded font-bold">-</button>
+                    <span class="font-bold dark:text-white">${item.qtd}</span>
+                    <button onclick="alterarQtdCarrinho('${item.id}', 1)" class="bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded font-bold">+</button>
+                    <span class="font-semibold text-blue-600 dark:text-blue-400">R$ ${subtotal.toFixed(2)}</span>
                 </div>
-            </div>
-        `;
+            </div>`;
     });
-
     document.getElementById('carrinho-total').innerText = `R$ ${totalGeral.toFixed(2)}`;
 }
 
 async function finalizarVenda() {
-    if (carrinhoAtual.length === 0) return alert("A cesta está vazia!");
+    if (carrinhoAtual.length === 0) return alert("Cesta vazia!");
 
-    const nomeCliente = document.getElementById('cli-nome').value.trim() || null;
-    const emailCliente = document.getElementById('cli-email').value.trim() || null;
+    const seq = Math.floor(Date.now() / 1000); 
+    let total = 0;
 
-    // Gerar número sequencial único baseado no timestamp atual (Ex: 2603181245)
-    const codigoVendaSeq = Math.floor(Date.now() / 1000); 
-
-    let totalVenda = 0;
-
-    // Processar cada item da cesta
     for (const item of carrinhoAtual) {
-        const subtotal = item.preco * item.qtd;
-        totalVenda += subtotal;
-
-        // Atualizar estoque no Supabase
-        const novoEstoque = item.estoqueMax - item.qtd;
-        await _supabase.from('livros').update({ quantidade: novoEstoque }).eq('id', item.id);
-
-        // Inserir registro na tabela movimentacoes
+        total += item.preco * item.qtd;
+        await _supabase.from('livros').update({ quantidade: item.estoqueMax - item.qtd }).eq('id', item.id);
         await _supabase.from('movimentacoes').insert([{
-            livro_id: item.id,
-            tipo: 'venda',
-            quantidade: item.qtd,
-            valor_total: subtotal,
-            codigo_venda: codigoVendaSeq,
-            cliente_nome: nomeCliente,
-            cliente_email: emailCliente,
-            user_id: usuarioAtual.id
+            livro_id: item.id, tipo: 'venda', quantidade: item.qtd, valor_total: item.preco * item.qtd,
+            codigo_venda: seq, cliente_nome: document.getElementById('cli-nome').value || null, cliente_email: document.getElementById('cli-email').value || null
         }]);
     }
 
-    alert(`Venda #${codigoVendaSeq} finalizada!\nTotal a passar na maquininha: R$ ${totalVenda.toFixed(2)}`);
-
-    // Limpar carrinho e inputs
+    alert(`Venda #${seq} OK!\nCobrar: R$ ${total.toFixed(2)}`);
     carrinhoAtual = [];
-    document.getElementById('cli-nome').value = '';
-    document.getElementById('cli-email').value = '';
+    document.getElementById('cli-nome').value = ''; document.getElementById('cli-email').value = '';
     renderizarCarrinho();
-    carregarDadosGlobais();
 }
 
 async function carregarVendasHoje() {
-    const hoje = new Date();
-    hoje.setHours(0,0,0,0);
-
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
     const { data } = await _supabase.from('movimentacoes').select('valor_total').eq('tipo', 'venda').gte('data_hora', hoje.toISOString());
-    if (data) {
-        const total = data.reduce((soma, m) => soma + Number(m.valor_total), 0);
-        document.getElementById('vendas-hoje').innerText = `R$ ${total.toFixed(2)}`;
+    const total = data ? data.reduce((soma, m) => soma + Number(m.valor_total), 0) : 0;
+    document.getElementById('vendas-hoje').innerText = `R$ ${total.toFixed(2)}`;
+}
+
+// --- RELATÓRIOS EXCEL (MASTER) ---
+async function exportarExcel(periodo) {
+    if (perfilAtual !== 'master') return;
+    const agora = new Date(); let limite = new Date();
+    if (periodo === 'diario') limite.setHours(0,0,0,0);
+    else if (periodo === 'semanal') limite.setDate(agora.getDate() - 7);
+    else if (periodo === 'mensal') limite.setMonth(agora.getMonth() - 1);
+
+    const { data, error } = await _supabase.from('movimentacoes').select(`codigo_venda, quantidade, valor_total, data_hora, cliente_nome, cliente_email, livros (titulo, isbn)`).eq('tipo', 'venda').gte('data_hora', limite.toISOString());
+
+    if (error || !data || data.length === 0) return alert("Nenhuma venda no período.");
+
+    const formato = data.map(m => ({
+        'Nº Venda': m.codigo_venda, 'Data': new Date(m.data_hora).toLocaleString('pt-BR'), 'Livro': m.livros ? m.livros.titulo : 'Removido',
+        'Qtd': m.quantidade, 'Total (R$)': Number(m.valor_total), 'Cliente': m.cliente_nome || '-', 'Email': m.cliente_email || '-'
+    }));
+    
+    const ws = XLSX.utils.json_to_sheet(formato);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Vendas");
+    XLSX.writeFile(wb, `relatorio_${periodo}.xlsx`);
+}
+
+// --- GERENCIAMENTO DE USUÁRIOS (MASTER) ---
+async function carregarUsuarios() {
+    if (perfilAtual !== 'master') return;
+    const { data } = await _supabase.from('perfis').select('*').order('email');
+    const div = document.getElementById('lista-usuarios');
+    div.innerHTML = '';
+    
+    data.forEach(user => {
+        div.innerHTML += `
+            <div class="flex justify-between items-center bg-gray-50 dark:bg-gray-700 p-2 border dark:border-gray-600 rounded">
+                <div>
+                    <p class="font-bold text-sm text-gray-800 dark:text-gray-200">${user.email}</p>
+                    <p class="text-xs ${user.role === 'master' ? 'text-red-500' : 'text-blue-500'} font-bold">Perfil: ${user.role.toUpperCase()}</p>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="mudarRoleUsuario('${user.id}', '${user.role === 'master' ? 'normal' : 'master'}')" class="bg-yellow-500 text-white px-2 py-1 rounded text-xs font-bold text-center">Tornar ${user.role === 'master' ? 'Normal' : 'Master'}</button>
+                    <button onclick="excluirUsuarioAuth('${user.id}')" class="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold text-center">Excluir</button>
+                </div>
+            </div>`;
+    });
+}
+
+async function criarUsuario() {
+    const email = document.getElementById('novo-user-email').value;
+    const password = document.getElementById('novo-user-senha').value;
+    const role = document.getElementById('novo-user-role').value;
+
+    if(password.length < 6) return alert("Senha mínima de 6 caracteres.");
+
+    // Cria o usuário na Auth via Admin (sem deslogar quem está usando o sistema)
+    const { data, error } = await _adminAuth.auth.admin.createUser({ email, password, email_confirm: true });
+    
+    if (error) alert("Erro: " + error.message);
+    else {
+        // Atualiza a role na tabela perfis (o trigger já criou com 'normal', a gente sobrescreve se precisar)
+        await _supabase.from('perfis').update({ role }).eq('id', data.user.id);
+        alert("Usuário criado com sucesso!");
+        document.getElementById('novo-user-email').value = '';
+        document.getElementById('novo-user-senha').value = '';
+        carregarUsuarios();
     }
 }
 
-// EXPORTAR EXCEL (DIÁRIO, SEMANAL, MENSAL)
-async function exportarExcel(periodo) {
-    const agora = new Date();
-    let dataLimite = new Date();
+async function mudarRoleUsuario(id, novaRole) {
+    if(id === usuarioAtual.id) return alert("Você não pode rebaixar a si mesmo!");
+    await _supabase.from('perfis').update({ role: novaRole }).eq('id', id);
+    carregarUsuarios();
+}
 
-    if (periodo === 'diario') {
-        dataLimite.setHours(0,0,0,0);
-    } else if (periodo === 'semanal') {
-        dataLimite.setDate(agora.getDate() - 7);
-    } else if (periodo === 'mensal') {
-        dataLimite.setMonth(agora.getMonth() - 1);
+async function excluirUsuarioAuth(id) {
+    if(id === usuarioAtual.id) return alert("Você não pode excluir sua própria conta!");
+    if(confirm("ATENÇÃO: Excluir definitivamente este usuário?")) {
+        await _adminAuth.auth.admin.deleteUser(id);
+        carregarUsuarios();
     }
+}
 
-    const { data, error } = await _supabase
-        .from('movimentacoes')
-        .select(`
-            codigo_venda,
-            quantidade,
-            valor_total,
-            data_hora,
-            cliente_nome,
-            cliente_email,
-            livros (titulo, isbn, preco)
-        `)
-        .eq('tipo', 'venda')
-        .gte('data_hora', dataLimite.toISOString())
-        .order('data_hora', { ascending: false });
-
-    if (error || !data || data.length === 0) {
-        return alert("Nenhuma venda encontrada para o período selecionado.");
-    }
-
-    const formatado = data.map(m => ({
-        'Nº Venda': m.codigo_venda || '-',
-        'Data / Hora': new Date(m.data_hora).toLocaleString('pt-BR'),
-        'Título do Livro': m.livros ? m.livros.titulo : 'Removido',
-        'ISBN': m.livros ? m.livros.isbn : '-',
-        'Quantidade': m.quantidade,
-        'Valor Total (R$)': Number(m.valor_total),
-        'Nome Cliente': m.cliente_nome || 'Não informado',
-        'E-mail Cliente': m.cliente_email || 'Não informado'
-    }));
-
-    const worksheet = XLSX.utils.json_to_sheet(formatado);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Vendas");
-
-    XLSX.writeFile(workbook, `relatorio_vendas_${periodo}.xlsx`);
+// --- CÂMERA (QR/BARCODE) ---
+function iniciarCamera(modo) {
+    const elementoId = modo === 'cadastro' ? 'reader-cadastro' : 'reader-venda';
+    if(html5QrcodeScanner) { html5QrcodeScanner.clear(); html5QrcodeScanner = null; }
+    html5QrcodeScanner = new Html5QrcodeScanner(elementoId, { fps: 10, qrbox: {width: 250, height: 150} }, false);
+    html5QrcodeScanner.render(async (texto) => {
+        html5QrcodeScanner.clear(); html5QrcodeScanner = null;
+        if (modo === 'cadastro') {
+            document.getElementById('cad-isbn').value = texto;
+            const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${texto}`);
+            const dados = await res.json();
+            if (dados.items && dados.items.length > 0) document.getElementById('cad-titulo').value = dados.items[0].volumeInfo.title;
+        } else {
+            document.getElementById('venda-isbn').value = texto;
+            adicionarAoCarrinhoPorIsbn();
+        }
+    }, () => {});
 }
