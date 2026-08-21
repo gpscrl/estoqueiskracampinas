@@ -134,10 +134,11 @@ function renderizarEstoqueGeral() {
     filtrados.forEach(l => {
         const bgBadge = l.quantidade > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400';
         
+        // Passamos apenas o ID entre aspas simples ('${l.id}') para evitar Uncaught SyntaxError
         const botoesAcao = perfilAtual === 'master' ? `
             <div class="flex gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-700">
-                <button onclick="abrirModal(${l.id}, '${l.titulo.replace(/'/g, "")}', ${l.preco}, ${l.quantidade})" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 px-4 py-2 rounded-xl text-sm font-semibold flex-1 transition-colors">Editar</button>
-                <button onclick="excluirLivro(${l.id})" class="bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-900/50 px-4 py-2 rounded-xl text-sm font-semibold flex-1 transition-colors">Excluir</button>
+                <button onclick="abrirModal('${l.id}')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 px-4 py-2 rounded-xl text-sm font-semibold flex-1 transition-colors">Editar</button>
+                <button onclick="excluirLivro('${l.id}')" class="bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-900/50 px-4 py-2 rounded-xl text-sm font-semibold flex-1 transition-colors">Excluir</button>
             </div>
         ` : '';
 
@@ -175,11 +176,14 @@ async function salvarLivro() {
     }
 }
 
-function abrirModal(id, titulo, preco, qtd) {
-    document.getElementById('edit-id').value = id;
-    document.getElementById('edit-titulo').value = titulo;
-    document.getElementById('edit-preco').value = preco;
-    document.getElementById('edit-qtd').value = qtd;
+function abrirModal(id) {
+    const livro = listaCacheLivros.find(l => String(l.id) === String(id));
+    if (!livro) return;
+
+    document.getElementById('edit-id').value = livro.id;
+    document.getElementById('edit-titulo').value = livro.titulo;
+    document.getElementById('edit-preco').value = livro.preco;
+    document.getElementById('edit-qtd').value = livro.quantidade;
     document.getElementById('modal-edicao').classList.remove('hidden');
 }
 function fecharModal() { document.getElementById('modal-edicao').classList.add('hidden'); }
@@ -196,7 +200,8 @@ async function salvarEdicao() {
 
 async function excluirLivro(id) {
     if (confirm("Excluir este livro definitivamente?")) {
-        await _supabase.from('livros').delete().eq('id', id);
+        const { error } = await _supabase.from('livros').delete().eq('id', id);
+        if (error) alert("Erro ao excluir: " + error.message);
     }
 }
 
