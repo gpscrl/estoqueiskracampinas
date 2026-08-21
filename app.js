@@ -3,6 +3,11 @@ const SUPABASE_URL = 'https://tvjadtkhjbbttszairxe.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amFkdGtoamJidHRzemFpcnhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwOTI3MDMsImV4cCI6MjEwMjY2ODcwM30.-5QfzCMPIzO7rV8CqTlnNkyWkoVGFnMwMYqDKDBzJXQ';
 const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amFkdGtoamJidHRzemFpcnhlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzA5MjcwMywiZXhwIjoyMTAyNjY4NzAzfQ.C_IUxWSEuFpy72jo2-aQORUSZdNPPtuC1Xk7EYqId30'; // Usada apenas para gerenciar os usuários!
 
+// --- CONFIGURAÇÃO DO SUPABASE ---
+const SUPABASE_URL = 'minhaurl';
+const SUPABASE_KEY = 'minhakey';
+const SUPABASE_SERVICE_KEY = 'minhakey'; // Usada apenas para gerenciar os usuários!
+
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const _adminAuth = supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
 
@@ -46,12 +51,12 @@ async function iniciarSessao(user) {
 
     perfilAtual = data ? data.role : 'normal';
     
-    // Mostra crachá bonito do usuário
+    // Mostra crachá do usuário
     const roleFormatado = perfilAtual === 'master' ? '👑 Master' : '👤 Vendedor';
     document.getElementById('user-info').innerText = `${user.email.split('@')[0]} | ${roleFormatado}`;
     
     document.querySelectorAll('.master-only').forEach(el => {
-        el.style.display = perfilAtual === 'master' ? 'flex' : 'none'; // usa flex por causa do design novo
+        el.style.display = perfilAtual === 'master' ? 'flex' : 'none';
     });
 
     document.getElementById('login-screen').classList.add('hidden');
@@ -83,9 +88,8 @@ function iniciarTempoReal() {
         .subscribe();
 }
 
-// --- CONTROLE DE ABAS (Atualizado Visualmente) ---
+// --- CONTROLE DE ABAS ---
 function mudarAba(abaId, titulo) {
-    // Agora o normal não acessa apenas cadastrar e usuarios. Relatorios está liberado!
     if (perfilAtual !== 'master' && ['cadastrar', 'usuarios'].includes(abaId)) return;
 
     document.querySelectorAll('.aba-conteudo').forEach(el => el.classList.add('hidden'));
@@ -98,7 +102,7 @@ function mudarAba(abaId, titulo) {
         btn.classList.add('text-slate-500', 'dark:text-slate-400');
     });
     
-    // Destaca o botão ativo de forma elegante
+    // Destaca o botão ativo
     const btnAtivo = document.getElementById(`btn-${abaId}`);
     if(btnAtivo) {
         btnAtivo.classList.remove('text-slate-500', 'dark:text-slate-400');
@@ -117,7 +121,7 @@ async function carregarDadosGlobais() {
     carregarVendasHoje();
 }
 
-// --- ESTOQUE (Design Atualizado) ---
+// --- ESTOQUE ---
 function renderizarEstoqueGeral() {
     const termo = (document.getElementById('filtro-estoque') ? document.getElementById('filtro-estoque').value.toLowerCase() : '');
     const divEstoque = document.getElementById('lista-estoque-geral');
@@ -134,7 +138,6 @@ function renderizarEstoqueGeral() {
     filtrados.forEach(l => {
         const bgBadge = l.quantidade > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400';
         
-        // Passamos apenas o ID entre aspas simples ('${l.id}') para evitar Uncaught SyntaxError
         const botoesAcao = perfilAtual === 'master' ? `
             <div class="flex gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-700">
                 <button onclick="abrirModal('${l.id}')" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 px-4 py-2 rounded-xl text-sm font-semibold flex-1 transition-colors">Editar</button>
@@ -205,7 +208,7 @@ async function excluirLivro(id) {
     }
 }
 
-// --- VENDAS & CARRINHO (Design Atualizado) ---
+// --- VENDAS & CARRINHO ---
 function adicionarAoCarrinhoPorIsbn() {
     const isbn = document.getElementById('venda-isbn').value.trim();
     if (!isbn) return alert("Insira um ISBN!");
@@ -294,7 +297,7 @@ async function carregarVendasHoje() {
     document.getElementById('vendas-hoje').innerText = `R$ ${total.toFixed(2)}`;
 }
 
-// --- RELATÓRIOS EXCEL (Agora livre para todos) ---
+// --- RELATÓRIOS EXCEL ---
 async function exportarExcel(periodo) {
     const agora = new Date(); let limite = new Date();
     if (periodo === 'diario') limite.setHours(0,0,0,0);
@@ -316,7 +319,7 @@ async function exportarExcel(periodo) {
     XLSX.writeFile(wb, `relatorio_${periodo}.xlsx`);
 }
 
-// --- GERENCIAMENTO DE USUÁRIOS (Apenas Master) ---
+// --- GERENCIAMENTO DE USUÁRIOS ---
 async function carregarUsuarios() {
     if (perfilAtual !== 'master') return;
     const { data } = await _supabase.from('perfis').select('*').order('email');
@@ -395,9 +398,9 @@ function iniciarCamera(modo) {
             adicionarAoCarrinhoPorIsbn();
         }
     }, () => {});
-    // --- EXCLUSÃO DE VENDAS E HISTÓRICO (Apenas Master) ---
+}
 
-// 1. Apaga todas as vendas registradas nos últimos 30 dias
+// --- EXCLUSÃO DE VENDAS E HISTÓRICO ---
 async function limparHistoricoVendas30Dias() {
     if (perfilAtual !== 'master') {
         return alert("Apenas usuários Master podem apagar o histórico de vendas!");
@@ -410,7 +413,6 @@ async function limparHistoricoVendas30Dias() {
 
     if (!confirmacao) return;
 
-    // Calcula a data exata de 30 dias atrás
     const dataLimite = new Date();
     dataLimite.setDate(dataLimite.getDate() - 30);
 
@@ -424,17 +426,15 @@ async function limparHistoricoVendas30Dias() {
         alert("Erro ao apagar histórico: " + error.message);
     } else {
         alert("✅ Histórico de vendas dos últimos 30 dias apagado!");
-        carregarVendasHoje(); // Recarrega o total do dia na tela
+        carregarVendasHoje();
     }
 }
 
-// 2. Apaga uma venda individual informando o Número do Pedido (#seq)
 async function excluirVendaPorCodigo(codigoInput) {
     if (perfilAtual !== 'master') {
         return alert("Apenas usuários Master podem excluir vendas!");
     }
 
-    // Se o código não for passado direto pelo botão, abre um prompt perguntando
     const codigo = codigoInput || prompt("Digite o Número do Pedido / Código da Venda que deseja apagar (Ex: 1712345678):");
     if (!codigo) return;
 
