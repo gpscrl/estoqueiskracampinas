@@ -395,4 +395,61 @@ function iniciarCamera(modo) {
             adicionarAoCarrinhoPorIsbn();
         }
     }, () => {});
+    // --- EXCLUSÃO DE VENDAS E HISTÓRICO (Apenas Master) ---
+
+// 1. Apaga todas as vendas registradas nos últimos 30 dias
+async function limparHistoricoVendas30Dias() {
+    if (perfilAtual !== 'master') {
+        return alert("Apenas usuários Master podem apagar o histórico de vendas!");
+    }
+
+    const confirmacao = confirm(
+        "⚠️ ATENÇÃO: Esta ação é IRREVERSÍVEL!\n\n" +
+        "Deseja realmente apagar TODAS as vendas dos ÚLTIMOS 30 DIAS?"
+    );
+
+    if (!confirmacao) return;
+
+    // Calcula a data exata de 30 dias atrás
+    const dataLimite = new Date();
+    dataLimite.setDate(dataLimite.getDate() - 30);
+
+    const { error } = await _supabase
+        .from('movimentacoes')
+        .delete()
+        .gte('data_hora', dataLimite.toISOString())
+        .eq('tipo', 'venda');
+
+    if (error) {
+        alert("Erro ao apagar histórico: " + error.message);
+    } else {
+        alert("✅ Histórico de vendas dos últimos 30 dias apagado!");
+        carregarVendasHoje(); // Recarrega o total do dia na tela
+    }
 }
+
+// 2. Apaga uma venda individual informando o Número do Pedido (#seq)
+async function excluirVendaPorCodigo(codigoInput) {
+    if (perfilAtual !== 'master') {
+        return alert("Apenas usuários Master podem excluir vendas!");
+    }
+
+    // Se o código não for passado direto pelo botão, abre um prompt perguntando
+    const codigo = codigoInput || prompt("Digite o Número do Pedido / Código da Venda que deseja apagar (Ex: 1712345678):");
+    if (!codigo) return;
+
+    if (confirm(`Deseja realmente apagar o Pedido #${codigo}?`)) {
+        const { error } = await _supabase
+            .from('movimentacoes')
+            .delete()
+            .eq('codigo_venda', codigo);
+
+        if (error) {
+            alert("Erro ao excluir venda: " + error.message);
+        } else {
+            alert(`✅ Venda #${codigo} excluída com sucesso!`);
+            carregarVendasHoje();
+        }
+    }
+}
+
