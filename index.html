@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sistema PDV - Livraria</title>
+    
+    <!-- CDNs e Bibliotecas -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = { darkMode: 'class' } // Habilita o modo noturno por classe
@@ -11,6 +13,9 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Importação do App JS -->
+    <script src="app.js" defer></script>
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 dark:text-white transition-colors duration-200 font-sans">
 
@@ -51,7 +56,7 @@
         <!-- ÁREA DE CONTEÚDO -->
         <main class="flex-1 p-4 max-w-3xl mx-auto w-full">
             
-            <!-- ABA: VENDAS (Acesso de Todos) -->
+            <!-- ABA: VENDAS -->
             <div id="tab-vendas" class="aba-conteudo">
                 <button onclick="iniciarCamera('venda')" class="w-full bg-emerald-600 text-white p-3 rounded-lg font-bold flex justify-center items-center gap-2 mb-3">
                     📷 Escanear Item para a Cesta
@@ -81,13 +86,13 @@
                 <button onclick="finalizarVenda()" class="w-full bg-emerald-700 text-white p-3 rounded-lg font-bold shadow-md">✅ Finalizar Venda na Maquininha</button>
             </div>
 
-            <!-- ABA: ESTOQUE (Todos veem, só Master edita/exclui) -->
+            <!-- ABA: ESTOQUE -->
             <div id="tab-estoque" class="aba-conteudo hidden">
                 <input type="text" id="filtro-estoque" onkeyup="filtrarEstoque()" placeholder="Buscar por título ou ISBN..." class="w-full p-3 mb-4 border rounded-lg shadow-sm dark:bg-gray-700 dark:border-gray-600">
                 <div id="lista-estoque-geral" class="space-y-3"></div>
             </div>
 
-            <!-- ABA: CADASTRAR (Master) -->
+            <!-- ABA: CADASTRAR -->
             <div id="tab-cadastrar" class="aba-conteudo hidden">
                 <button onclick="iniciarCamera('cadastro')" class="w-full bg-blue-800 text-white p-3 rounded-lg font-bold mb-3">📷 Escanear ISBN para Cadastrar</button>
                 <div id="reader-cadastro" class="w-full mb-3"></div>
@@ -101,7 +106,7 @@
                 </div>
             </div>
 
-            <!-- ABA: RELATÓRIOS (Master) -->
+            <!-- ABA: RELATÓRIOS -->
             <div id="tab-relatorios" class="aba-conteudo hidden">
                 <div class="bg-yellow-100 dark:bg-yellow-900 p-4 rounded-lg border dark:border-yellow-700 mb-6 shadow-sm text-center">
                     <h4 class="font-bold text-yellow-800 dark:text-yellow-200 text-sm">Vendas de Hoje</h4>
@@ -114,25 +119,23 @@
                     <button onclick="exportarExcel('semanal')" class="w-full bg-green-600 text-white p-3 rounded-lg font-bold">📊 Baixar Relatório Semanal</button>
                     <button onclick="exportarExcel('mensal')" class="w-full bg-green-500 text-white p-3 rounded-lg font-bold">📊 Baixar Relatório Mensal</button>
                 </div>
+
+                <!-- Área Master no Relatório -->
+                <div class="master-only flex-col gap-3 mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                    <p class="font-bold text-sm text-slate-500 uppercase tracking-wider">Ações Administrativas (Master)</p>
+
+                    <div class="flex flex-wrap gap-3">
+                        <button onclick="excluirVendaPorCodigo()" class="bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2">
+                            🗑️ Apagar Venda Específica (#)
+                        </button>
+                        <button onclick="limparHistoricoVendas30Dias()" class="bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2">
+                            ⚠️ Limpar Vendas dos Últimos 30 Dias
+                        </button>
+                    </div>
+                </div>
             </div>
-            <!-- Área Master no Relatório / Gerenciamento -->
-<div class="master-only flex-col gap-3 mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-    <p class="font-bold text-sm text-slate-500 uppercase tracking-wider">Ações Administrativas (Master)</p>
 
-    <div class="flex flex-wrap gap-3">
-        <!-- Botão para apagar uma venda específica -->
-        <button onclick="excluirVendaPorCodigo()" class="bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2">
-            🗑️ Apagar Venda Específica (#)
-        </button>
-
-        <!-- Botão para limpar vendas dos últimos 30 dias -->
-        <button onclick="limparHistoricoVendas30Dias()" class="bg-rose-100 hover:bg-rose-200 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 px-4 py-2 rounded-xl text-sm font-semibold transition-colors flex items-center gap-2">
-            ⚠️ Limpar Vendas dos Últimos 30 Dias
-        </button>
-    </div>
-</div>
-
-            <!-- ABA: USUÁRIOS (Master) -->
+            <!-- ABA: USUÁRIOS -->
             <div id="tab-usuarios" class="aba-conteudo hidden">
                 <div class="bg-white dark:bg-gray-800 p-4 rounded-lg border dark:border-gray-700 mb-4 shadow-sm">
                     <h3 class="font-bold text-lg mb-2">Criar Novo Usuário</h3>
@@ -169,6 +172,5 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
 </body>
 </html>
