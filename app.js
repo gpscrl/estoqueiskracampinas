@@ -3,11 +3,6 @@ const SUPABASE_URL = 'https://tvjadtkhjbbttszairxe.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amFkdGtoamJidHRzemFpcnhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwOTI3MDMsImV4cCI6MjEwMjY2ODcwM30.-5QfzCMPIzO7rV8CqTlnNkyWkoVGFnMwMYqDKDBzJXQ';
 const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amFkdGtoamJidHRzemFpcnhlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzA5MjcwMywiZXhwIjoyMTAyNjY4NzAzfQ.C_IUxWSEuFpy72jo2-aQORUSZdNPPtuC1Xk7EYqId30'; // Usada apenas para gerenciar os usuários!
 
-// --- CONFIGURAÇÃO DO SUPABASE ---
-const SUPABASE_URL = 'minhaurl';
-const SUPABASE_KEY = 'minhakey';
-const SUPABASE_SERVICE_KEY = 'minhakey'; // Usada apenas para gerenciar os usuários!
-
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const _adminAuth = supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
 
