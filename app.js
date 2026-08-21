@@ -4,11 +4,10 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR2amFkdGtoamJidHRzemFpcnhlIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzA5MjcwMywiZXhwIjoyMTAyNjY4NzAzfQ.C_IUxWSEuFpy72jo2-aQORUSZdNPPtuC1Xk7EYqId30'; // Usada apenas para gerenciar os usuários!
 
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-// Cliente Admin exclusivo para criar/deletar usuários sem perder a sessão atual
 const _adminAuth = supabase.createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { autoRefreshToken: false, persistSession: false } });
 
 let usuarioAtual = null;
-let perfilAtual = null; // 'master' ou 'normal'
+let perfilAtual = null;
 let html5QrcodeScanner = null;
 let listaCacheLivros = [];
 let carrinhoAtual = [];
@@ -24,7 +23,6 @@ function toggleDarkMode() {
         localStorage.setItem('tema', 'dark');
     }
 }
-// Carregar tema salvo
 if (localStorage.getItem('tema') === 'dark') document.documentElement.classList.add('dark');
 
 // --- AUTENTICAÇÃO E PERFIS ---
@@ -43,21 +41,17 @@ async function login() {
 async function iniciarSessao(user) {
     usuarioAtual = user;
     
-    // Buscar perfil do banco
     const { data, error } = await _supabase.from('perfis').select('role').eq('id', user.id).single();
-    
-    // SE DER ERRO, VAI MOSTRAR NO CONSOLE:
-    if (error) {
-        console.error("Erro ao buscar o perfil no Supabase:", error);
-    }
+    if (error) console.error("Erro ao buscar perfil:", error);
 
     perfilAtual = data ? data.role : 'normal';
     
-    document.getElementById('user-info').innerText = `${user.email} (${perfilAtual.toUpperCase()})`;
+    // Mostra crachá bonito do usuário
+    const roleFormatado = perfilAtual === 'master' ? '👑 Master' : '👤 Vendedor';
+    document.getElementById('user-info').innerText = `${user.email.split('@')[0]} | ${roleFormatado}`;
     
-    // Esconder/Mostrar abas dependendo da hierarquia
     document.querySelectorAll('.master-only').forEach(el => {
-        el.style.display = perfilAtual === 'master' ? 'block' : 'none';
+        el.style.display = perfilAtual === 'master' ? 'flex' : 'none'; // usa flex por causa do design novo
     });
 
     document.getElementById('login-screen').classList.add('hidden');
@@ -70,43 +64,45 @@ async function iniciarSessao(user) {
 
 async function logout() {
     await _supabase.auth.signOut();
-    location.reload(); // Recarrega a página para limpar tudo
+    location.reload();
 }
 
-// Checar sessão ativa ao abrir o app
 _supabase.auth.getSession().then(({ data: { session } }) => {
     if (session) iniciarSessao(session.user);
 });
 
-// --- TEMPO REAL (REALTIME SUPABASE) ---
+// --- TEMPO REAL ---
 function iniciarTempoReal() {
     _supabase.channel('tabelas-gerais')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'livros' }, payload => {
-            carregarDadosGlobais(); // Alguém mexeu no estoque, atualiza a tela
+            carregarDadosGlobais();
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'movimentacoes' }, payload => {
-            carregarVendasHoje(); // Alguém fez venda, atualiza o relatório
+            carregarVendasHoje();
         })
         .subscribe();
 }
 
-// --- CONTROLE DE ABAS ---
+// --- CONTROLE DE ABAS (Atualizado Visualmente) ---
 function mudarAba(abaId, titulo) {
-    // Bloquear acesso direto se for normal tentando acessar aba de master
-    if (perfilAtual !== 'master' && ['cadastrar', 'relatorios', 'usuarios'].includes(abaId)) return;
+    // Agora o normal não acessa apenas cadastrar e usuarios. Relatorios está liberado!
+    if (perfilAtual !== 'master' && ['cadastrar', 'usuarios'].includes(abaId)) return;
 
     document.querySelectorAll('.aba-conteudo').forEach(el => el.classList.add('hidden'));
     document.getElementById(`tab-${abaId}`).classList.remove('hidden');
     document.getElementById('titulo-aba').innerText = titulo;
 
+    // Reset visual dos botões
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('text-blue-600', 'dark:text-blue-400');
-        btn.classList.add('text-gray-400');
+        btn.classList.remove('text-indigo-600', 'dark:text-indigo-400', 'bg-indigo-50', 'dark:bg-indigo-900/40');
+        btn.classList.add('text-slate-500', 'dark:text-slate-400');
     });
+    
+    // Destaca o botão ativo de forma elegante
     const btnAtivo = document.getElementById(`btn-${abaId}`);
     if(btnAtivo) {
-        btnAtivo.classList.remove('text-gray-400');
-        btnAtivo.classList.add('text-blue-600', 'dark:text-blue-400');
+        btnAtivo.classList.remove('text-slate-500', 'dark:text-slate-400');
+        btnAtivo.classList.add('text-indigo-600', 'dark:text-indigo-400', 'bg-indigo-50', 'dark:bg-indigo-900/40');
     }
 
     if (abaId === 'usuarios') carregarUsuarios();
@@ -121,7 +117,7 @@ async function carregarDadosGlobais() {
     carregarVendasHoje();
 }
 
-// --- ESTOQUE ---
+// --- ESTOQUE (Design Atualizado) ---
 function renderizarEstoqueGeral() {
     const termo = (document.getElementById('filtro-estoque') ? document.getElementById('filtro-estoque').value.toLowerCase() : '');
     const divEstoque = document.getElementById('lista-estoque-geral');
@@ -131,24 +127,28 @@ function renderizarEstoqueGeral() {
     const filtrados = listaCacheLivros.filter(l => l.titulo.toLowerCase().includes(termo) || (l.isbn && l.isbn.includes(termo)));
     
     if(filtrados.length === 0) {
-        divEstoque.innerHTML = '<p class="text-gray-500 text-center">Nenhum livro encontrado.</p>';
+        divEstoque.innerHTML = '<div class="text-center p-8 text-slate-400">Nenhum livro encontrado.</div>';
         return;
     }
 
     filtrados.forEach(l => {
-        // Se for master, exibe os botões. Se for normal, esconde.
+        const bgBadge = l.quantidade > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400';
+        
         const botoesAcao = perfilAtual === 'master' ? `
-            <div class="flex gap-1 mt-2">
-                <button onclick="abrirModal(${l.id}, '${l.titulo.replace(/'/g, "")}', ${l.preco}, ${l.quantidade})" class="bg-blue-500 text-white px-3 py-1 rounded text-xs font-bold w-full">Editar</button>
-                <button onclick="excluirLivro(${l.id})" class="bg-red-500 text-white px-3 py-1 rounded text-xs font-bold w-full">Excluir</button>
+            <div class="flex gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-700">
+                <button onclick="abrirModal(${l.id}, '${l.titulo.replace(/'/g, "")}', ${l.preco}, ${l.quantidade})" class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 dark:hover:bg-indigo-900/50 px-4 py-2 rounded-xl text-sm font-semibold flex-1 transition-colors">Editar</button>
+                <button onclick="excluirLivro(${l.id})" class="bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400 dark:hover:bg-rose-900/50 px-4 py-2 rounded-xl text-sm font-semibold flex-1 transition-colors">Excluir</button>
             </div>
         ` : '';
 
         divEstoque.innerHTML += `
-            <div class="p-3 border rounded-lg bg-white dark:bg-gray-800 dark:border-gray-700 shadow-sm flex flex-col">
-                <p class="font-bold text-gray-800 dark:text-gray-200">${l.titulo}</p>
-                <p class="text-xs text-gray-500 dark:text-gray-400">ISBN: ${l.isbn || '-'}</p>
-                <p class="text-sm text-blue-600 dark:text-blue-400 font-semibold mt-1">Estoque: ${l.quantidade} un. | R$ ${Number(l.preco).toFixed(2)}</p>
+            <div class="p-5 border border-slate-200 rounded-2xl bg-white dark:bg-slate-800 dark:border-slate-700 shadow-sm hover:shadow-md transition-shadow">
+                <div class="flex justify-between items-start mb-1">
+                    <p class="font-bold text-slate-800 dark:text-slate-100 text-lg leading-tight pr-4">${l.titulo}</p>
+                    <span class="px-2.5 py-1 rounded-lg text-xs font-bold ${bgBadge} whitespace-nowrap">${l.quantidade} un.</span>
+                </div>
+                <p class="text-xs text-slate-400 dark:text-slate-500 mb-2">ISBN: ${l.isbn || '-'}</p>
+                <p class="text-lg text-indigo-600 dark:text-indigo-400 font-bold">R$ ${Number(l.preco).toFixed(2)}</p>
                 ${botoesAcao}
             </div>`;
     });
@@ -156,7 +156,7 @@ function renderizarEstoqueGeral() {
 
 function filtrarEstoque() { renderizarEstoqueGeral(); }
 
-// --- CADASTRO / EDIÇÃO DE LIVROS (MASTER) ---
+// --- CADASTRO E EDIÇÃO ---
 async function salvarLivro() {
     if (perfilAtual !== 'master') return;
     const isbn = document.getElementById('cad-isbn').value;
@@ -200,7 +200,7 @@ async function excluirLivro(id) {
     }
 }
 
-// --- VENDAS & CARRINHO (TODOS) ---
+// --- VENDAS & CARRINHO (Design Atualizado) ---
 function adicionarAoCarrinhoPorIsbn() {
     const isbn = document.getElementById('venda-isbn').value.trim();
     if (!isbn) return alert("Insira um ISBN!");
@@ -234,7 +234,7 @@ function renderizarCarrinho() {
     const div = document.getElementById('lista-carrinho');
     div.innerHTML = '';
     if (carrinhoAtual.length === 0) {
-        div.innerHTML = '<p class="text-xs text-gray-400 text-center py-2">Cesta vazia.</p>';
+        div.innerHTML = '<p class="text-sm text-slate-400 text-center py-4">A cesta está vazia.</p>';
         document.getElementById('carrinho-total').innerText = 'R$ 0,00';
         return;
     }
@@ -243,16 +243,18 @@ function renderizarCarrinho() {
         const subtotal = item.preco * item.qtd;
         totalGeral += subtotal;
         div.innerHTML += `
-            <div class="flex justify-between items-center bg-white dark:bg-gray-700 p-2 rounded border dark:border-gray-600 text-xs">
-                <div>
-                    <p class="font-bold text-gray-800 dark:text-gray-200">${item.titulo}</p>
-                    <p class="text-gray-500 dark:text-gray-400">R$ ${Number(item.preco).toFixed(2)} un</p>
+            <div class="flex justify-between items-center bg-slate-50 dark:bg-slate-800/80 p-3 rounded-xl border border-slate-100 dark:border-slate-700">
+                <div class="flex-1 pr-2">
+                    <p class="font-semibold text-slate-700 dark:text-slate-200 text-sm leading-tight mb-1">${item.titulo}</p>
+                    <p class="text-xs text-slate-500">R$ ${Number(item.preco).toFixed(2)} un</p>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="alterarQtdCarrinho('${item.id}', -1)" class="bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded font-bold">-</button>
-                    <span class="font-bold dark:text-white">${item.qtd}</span>
-                    <button onclick="alterarQtdCarrinho('${item.id}', 1)" class="bg-gray-200 dark:bg-gray-600 px-2 py-0.5 rounded font-bold">+</button>
-                    <span class="font-semibold text-blue-600 dark:text-blue-400">R$ ${subtotal.toFixed(2)}</span>
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg overflow-hidden shadow-sm">
+                        <button onclick="alterarQtdCarrinho('${item.id}', -1)" class="px-3 py-1 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors font-bold">-</button>
+                        <span class="px-2 text-sm font-bold w-6 text-center">${item.qtd}</span>
+                        <button onclick="alterarQtdCarrinho('${item.id}', 1)" class="px-3 py-1 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors font-bold">+</button>
+                    </div>
+                    <span class="font-bold text-indigo-600 dark:text-indigo-400 w-16 text-right">R$ ${subtotal.toFixed(2)}</span>
                 </div>
             </div>`;
     });
@@ -274,7 +276,7 @@ async function finalizarVenda() {
         }]);
     }
 
-    alert(`Venda #${seq} OK!\nCobrar: R$ ${total.toFixed(2)}`);
+    alert(`✅ Venda Concluída!\n\nNúmero do Pedido: #${seq}\nValor Total: R$ ${total.toFixed(2)}`);
     carrinhoAtual = [];
     document.getElementById('cli-nome').value = ''; document.getElementById('cli-email').value = '';
     renderizarCarrinho();
@@ -287,9 +289,8 @@ async function carregarVendasHoje() {
     document.getElementById('vendas-hoje').innerText = `R$ ${total.toFixed(2)}`;
 }
 
-// --- RELATÓRIOS EXCEL (MASTER) ---
+// --- RELATÓRIOS EXCEL (Agora livre para todos) ---
 async function exportarExcel(periodo) {
-    if (perfilAtual !== 'master') return;
     const agora = new Date(); let limite = new Date();
     if (periodo === 'diario') limite.setHours(0,0,0,0);
     else if (periodo === 'semanal') limite.setDate(agora.getDate() - 7);
@@ -310,7 +311,7 @@ async function exportarExcel(periodo) {
     XLSX.writeFile(wb, `relatorio_${periodo}.xlsx`);
 }
 
-// --- GERENCIAMENTO DE USUÁRIOS (MASTER) ---
+// --- GERENCIAMENTO DE USUÁRIOS (Apenas Master) ---
 async function carregarUsuarios() {
     if (perfilAtual !== 'master') return;
     const { data } = await _supabase.from('perfis').select('*').order('email');
@@ -318,15 +319,22 @@ async function carregarUsuarios() {
     div.innerHTML = '';
     
     data.forEach(user => {
+        const isMaster = user.role === 'master';
+        const roleCor = isMaster ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+        
         div.innerHTML += `
-            <div class="flex justify-between items-center bg-gray-50 dark:bg-gray-700 p-2 border dark:border-gray-600 rounded">
+            <div class="flex flex-col sm:flex-row justify-between sm:items-center bg-slate-50 dark:bg-slate-800/50 p-4 border border-slate-200 dark:border-slate-700 rounded-2xl gap-3">
                 <div>
-                    <p class="font-bold text-sm text-gray-800 dark:text-gray-200">${user.email}</p>
-                    <p class="text-xs ${user.role === 'master' ? 'text-red-500' : 'text-blue-500'} font-bold">Perfil: ${user.role.toUpperCase()}</p>
+                    <p class="font-bold text-slate-800 dark:text-slate-200">${user.email}</p>
+                    <span class="inline-block mt-1 px-2 py-0.5 rounded text-xs font-bold ${roleCor}">${isMaster ? '👑 MASTER' : '👤 NORMAL'}</span>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="mudarRoleUsuario('${user.id}', '${user.role === 'master' ? 'normal' : 'master'}')" class="bg-yellow-500 text-white px-2 py-1 rounded text-xs font-bold text-center">Tornar ${user.role === 'master' ? 'Normal' : 'Master'}</button>
-                    <button onclick="excluirUsuarioAuth('${user.id}')" class="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold text-center">Excluir</button>
+                <div class="flex gap-2 w-full sm:w-auto">
+                    <button onclick="mudarRoleUsuario('${user.id}', '${isMaster ? 'normal' : 'master'}')" class="flex-1 sm:flex-none bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 px-3 py-1.5 rounded-lg text-sm font-semibold shadow-sm hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors">
+                        Tornar ${isMaster ? 'Normal' : 'Master'}
+                    </button>
+                    <button onclick="excluirUsuarioAuth('${user.id}')" class="flex-1 sm:flex-none bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 px-3 py-1.5 rounded-lg text-sm font-semibold shadow-sm hover:bg-rose-200 dark:hover:bg-rose-900/50 transition-colors">
+                        Excluir
+                    </button>
                 </div>
             </div>`;
     });
@@ -339,12 +347,10 @@ async function criarUsuario() {
 
     if(password.length < 6) return alert("Senha mínima de 6 caracteres.");
 
-    // Cria o usuário na Auth via Admin (sem deslogar quem está usando o sistema)
     const { data, error } = await _adminAuth.auth.admin.createUser({ email, password, email_confirm: true });
     
     if (error) alert("Erro: " + error.message);
     else {
-        // Atualiza a role na tabela perfis (o trigger já criou com 'normal', a gente sobrescreve se precisar)
         await _supabase.from('perfis').update({ role }).eq('id', data.user.id);
         alert("Usuário criado com sucesso!");
         document.getElementById('novo-user-email').value = '';
